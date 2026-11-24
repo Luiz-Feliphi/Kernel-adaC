@@ -13,7 +13,7 @@ void main() {
         ".btn-primary { background: linear-gradient(90deg, #6366f1, #8b5cf6); color: #ffffff; border-radius: 10px; padding: 11px 22px; font-weight: bold; box-shadow: 0 6px 16px #000000; }" +
         ".btn-primary:hover { background-color: #4f46e5; }" +
         ".btn-primary:active { background-color: #4338ca; }" +
-        ".pill { background-color: #1e1b4b; color: #a5b4fc; border-radius: 999px; padding: 4px 12px; font-size: 12px; font-weight: bold; }"
+        ".pill { background-color: #534da5ff; color: #a5b4fc; border-radius: 999px; padding: 4px 12px; font-size: 12px; font-weight: bold; }"
     );
 
     // Header (styled via CSS + inline)
@@ -47,7 +47,8 @@ void main() {
         .hoverBg("#db2777")
         .radius(12)
         .paddingXY(20, 10)
-        .bold();
+        .bold()
+        .border(1);
 
     while (app.loop()) {
         if (btnSave.clicked()) {

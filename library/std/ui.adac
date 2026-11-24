@@ -1,4 +1,4 @@
-// std::ui - Native modern UI framework for adaC (Win32 + DIB anti-aliased renderer + ClearType).
+// std::ui - Native modern UI framework for adaC (Win32 + fast DIB anti-aliased renderer + ClearType).
 // Supports TWO styling modes:
 //   1) Literal CSS rules: app.css("...") / app.loadCss("style.css")
 //   2) Fluent inline code styling: btn.bg("#6366f1").hoverBg("#4f46e5").radius(12).paddingXY(20, 10).bold()
@@ -22,10 +22,10 @@ class _UiStyle {
     int fontSize;     bool hasFontSize;
     bool bold;        bool hasBold;
     String fontName;  bool hasFontName;
-    int align;        bool hasAlign;   // 0=left, 1=center, 2=right
+    int align;        bool hasAlign;
     int shadow;       bool hasShadow;
     bool isRow;       bool hasDir;
-    int alignItems;   bool hasAlignItems; // 0=start, 1=center, 2=end
+    int alignItems;   bool hasAlignItems;
 
     _UiStyle() {
         bg = 0; hasBg = false;
@@ -75,8 +75,8 @@ class _UiStyle {
 }
 
 class _CssRule {
-    String selector; // e.g. "button", ".btn", "#save"
-    String pseudo;   // "", "hover", "active", "focus"
+    String selector;
+    String pseudo;
     _UiStyle style;
     _CssRule(String sel, String ps, _UiStyle st) { selector = sel; pseudo = ps; style = st; }
 }
@@ -100,7 +100,6 @@ class _UiColor {
         return n;
     }
 
-    // Returns 0xAARRGGBB (alpha 255 by default, 0 for transparent)
     static int parse(String raw) {
         if (raw == null) return 0xFF000000;
         String s = raw.trim().toLowerCase();
@@ -251,8 +250,6 @@ class _CssEngine {
         int n = cssText.length();
         int i = 0;
         while (i < n) {
-            int lb = cssText.indexOf("{");
-            // manual scan from i
             while (i < n && cssText[i] != '{') {
                 if (cssText[i] == '/' && i + 1 < n && cssText[i + 1] == '*') {
                     i += 2;
@@ -266,11 +263,11 @@ class _CssEngine {
             while (i < n && cssText[i] != '{') i++;
             if (i >= n) break;
             String selRaw = cssText.substring(startSel, i).trim();
-            i++; // skip '{'
+            i++;
             int startBody = i;
             while (i < n && cssText[i] != '}') i++;
             String body = cssText.substring(startBody, i);
-            if (i < n) i++; // skip '}'
+            if (i < n) i++;
 
             _UiStyle st = new _UiStyle();
             String[] decls = body.split(";");
@@ -296,12 +293,10 @@ class _CssEngine {
     }
 
     void resolve(String tag, String clsStr, String idStr, bool hovered, bool active, bool focused, _UiStyle out) {
-        // 1. Tag rules
         for (int i = 0; i < rules.size(); i++) {
             _CssRule r = rules[i];
             if (r.pseudo.equals("") && r.selector.equals(tag)) out.copyFrom(r.style);
         }
-        // 2. Class rules
         if (clsStr != null && clsStr.length() > 0) {
             String[] clss = clsStr.split(" ");
             for (int c = 0; c < clss.length; c++) {
@@ -314,7 +309,6 @@ class _CssEngine {
                 }
             }
         }
-        // 3. ID rules
         if (idStr != null && idStr.length() > 0) {
             String hash = "#" + idStr;
             for (int i = 0; i < rules.size(); i++) {
@@ -322,7 +316,6 @@ class _CssEngine {
                 if (r.pseudo.equals("") && r.selector.equals(hash)) out.copyFrom(r.style);
             }
         }
-        // 4. Pseudo-classes (:hover, :active, :focus)
         if (hovered) {
             for (int i = 0; i < rules.size(); i++) {
                 _CssRule r = rules[i];
@@ -367,7 +360,6 @@ class UiElement {
     List<UiElement> children;
     _CssEngine _css;
 
-    // Layout & interaction state
     int rx; int ry; int rw; int rh;
     bool hovered;
     bool pressed;
@@ -375,6 +367,7 @@ class UiElement {
     bool _clicked;
     bool _changed;
     bool _submitted;
+    bool _dirty;
 
     UiElement(String t, _CssEngine cssEngine) {
         tag = t;
@@ -390,6 +383,7 @@ class UiElement {
         rx = 0; ry = 0; rw = 0; rh = 0;
         hovered = false; pressed = false; focused = false;
         _clicked = false; _changed = false; _submitted = false;
+        _dirty = true;
         _initDefaults(t);
     }
 
@@ -405,7 +399,7 @@ class UiElement {
             inlineStyle.radius = 16; inlineStyle.hasRadius = true;
             inlineStyle.padX = 20; inlineStyle.padY = 20; inlineStyle.hasPad = true;
             inlineStyle.gap = 12; inlineStyle.hasGap = true;
-            inlineStyle.shadow = 14; inlineStyle.hasShadow = true;
+            inlineStyle.shadow = 12; inlineStyle.hasShadow = true;
         } else if (t.equals("row")) {
             inlineStyle.isRow = true; inlineStyle.hasDir = true;
             inlineStyle.gap = 12; inlineStyle.hasGap = true;
@@ -427,7 +421,7 @@ class UiElement {
             inlineStyle.padX = 20; inlineStyle.padY = 10; inlineStyle.hasPad = true;
             inlineStyle.bold = true; inlineStyle.hasBold = true;
             inlineStyle.align = 1; inlineStyle.hasAlign = true;
-            inlineStyle.shadow = 8; inlineStyle.hasShadow = true;
+            inlineStyle.shadow = 6; inlineStyle.hasShadow = true;
         } else if (t.equals("input")) {
             inlineStyle.bg = 0xFF18181B; inlineStyle.hasBg = true;
             inlineStyle.borderColor = 0xFF3F3F46; inlineStyle.hasBorderColor = true;
@@ -458,8 +452,7 @@ class UiElement {
         }
     }
 
-    // ---- Child builders ----
-    UiElement add(UiElement child) { children.add(child); return this; }
+    UiElement add(UiElement child) { children.add(child); _dirty = true; return this; }
     UiElement card() { UiElement e = new UiElement("card", _css); children.add(e); return e; }
     UiElement row() { UiElement e = new UiElement("row", _css); children.add(e); return e; }
     UiElement column() { UiElement e = new UiElement("column", _css); children.add(e); return e; }
@@ -473,48 +466,47 @@ class UiElement {
     UiElement divider() { UiElement e = new UiElement("divider", _css); children.add(e); return e; }
     UiElement spacer(int px) { UiElement e = new UiElement("spacer", _css); e.inlineStyle.width = px; e.inlineStyle.height = px; e.inlineStyle.hasWidth = true; e.inlineStyle.hasHeight = true; children.add(e); return e; }
 
-    // ---- CSS Class & ID ----
-    UiElement cls(String c) { clsName = c; return this; }
-    UiElement id(String i) { idName = i; return this; }
+    UiElement cls(String c) { clsName = c; _dirty = true; return this; }
+    UiElement id(String i) { idName = i; _dirty = true; return this; }
 
-    // ---- Inline Fluent Styling (Mode 2) ----
-    UiElement bg(String c) { inlineStyle.bg = _UiColor.parse(c); inlineStyle.hasBg = true; inlineStyle.hasGrad = false; return this; }
-    UiElement gradient(String c1, String c2) { inlineStyle.bg = _UiColor.parse(c1); inlineStyle.bg2 = _UiColor.parse(c2); inlineStyle.hasBg = true; inlineStyle.hasGrad = true; return this; }
+    UiElement bg(String c) { inlineStyle.bg = _UiColor.parse(c); inlineStyle.hasBg = true; inlineStyle.hasGrad = false; _dirty = true; return this; }
+    UiElement gradient(String c1, String c2) { inlineStyle.bg = _UiColor.parse(c1); inlineStyle.bg2 = _UiColor.parse(c2); inlineStyle.hasBg = true; inlineStyle.hasGrad = true; _dirty = true; return this; }
     UiElement hoverBg(String c) { inlineStyle.hoverBg = _UiColor.parse(c); inlineStyle.hasHoverBg = true; return this; }
     UiElement activeBg(String c) { inlineStyle.activeBg = _UiColor.parse(c); inlineStyle.hasActiveBg = true; return this; }
-    UiElement color(String c) { inlineStyle.fg = _UiColor.parse(c); inlineStyle.hasFg = true; return this; }
-    UiElement radius(int r) { inlineStyle.radius = r; inlineStyle.hasRadius = true; return this; }
-    UiElement border(String c, int w) { inlineStyle.borderColor = _UiColor.parse(c); inlineStyle.borderWidth = w; inlineStyle.hasBorderColor = true; inlineStyle.hasBorderWidth = true; return this; }
-    UiElement padding(int p) { inlineStyle.padX = p; inlineStyle.padY = p; inlineStyle.hasPad = true; return this; }
-    UiElement paddingXY(int px, int py) { inlineStyle.padX = px; inlineStyle.padY = py; inlineStyle.hasPad = true; return this; }
-    UiElement margin(int m) { inlineStyle.margin = m; inlineStyle.hasMargin = true; return this; }
-    UiElement gap(int g) { inlineStyle.gap = g; inlineStyle.hasGap = true; return this; }
-    UiElement width(int w) { inlineStyle.width = w; inlineStyle.hasWidth = true; return this; }
-    UiElement height(int h) { inlineStyle.height = h; inlineStyle.hasHeight = true; return this; }
-    UiElement size(int w, int h) { inlineStyle.width = w; inlineStyle.height = h; inlineStyle.hasWidth = true; inlineStyle.hasHeight = true; return this; }
-    UiElement fontSize(int sz) { inlineStyle.fontSize = sz; inlineStyle.hasFontSize = true; return this; }
-    UiElement bold() { inlineStyle.bold = true; inlineStyle.hasBold = true; return this; }
-    UiElement font(String name) { inlineStyle.fontName = name; inlineStyle.hasFontName = true; return this; }
+    UiElement color(String c) { inlineStyle.fg = _UiColor.parse(c); inlineStyle.hasFg = true; _dirty = true; return this; }
+    UiElement radius(int r) { inlineStyle.radius = r; inlineStyle.hasRadius = true; _dirty = true; return this; }
+    UiElement border(String c, int w) { inlineStyle.borderColor = _UiColor.parse(c); inlineStyle.borderWidth = w; inlineStyle.hasBorderColor = true; inlineStyle.hasBorderWidth = true; _dirty = true; return this; }
+    UiElement border(int w) { if (!inlineStyle.hasBorderColor) { inlineStyle.borderColor = 0xFF3F3F46; inlineStyle.hasBorderColor = true; } inlineStyle.borderWidth = w; inlineStyle.hasBorderWidth = true; _dirty = true; return this; }
+    UiElement padding(int p) { inlineStyle.padX = p; inlineStyle.padY = p; inlineStyle.hasPad = true; _dirty = true; return this; }
+    UiElement paddingXY(int px, int py) { inlineStyle.padX = px; inlineStyle.padY = py; inlineStyle.hasPad = true; _dirty = true; return this; }
+    UiElement margin(int m) { inlineStyle.margin = m; inlineStyle.hasMargin = true; _dirty = true; return this; }
+    UiElement gap(int g) { inlineStyle.gap = g; inlineStyle.hasGap = true; _dirty = true; return this; }
+    UiElement width(int w) { inlineStyle.width = w; inlineStyle.hasWidth = true; _dirty = true; return this; }
+    UiElement height(int h) { inlineStyle.height = h; inlineStyle.hasHeight = true; _dirty = true; return this; }
+    UiElement size(int w, int h) { inlineStyle.width = w; inlineStyle.height = h; inlineStyle.hasWidth = true; inlineStyle.hasHeight = true; _dirty = true; return this; }
+    UiElement fontSize(int sz) { inlineStyle.fontSize = sz; inlineStyle.hasFontSize = true; _dirty = true; return this; }
+    UiElement bold() { inlineStyle.bold = true; inlineStyle.hasBold = true; _dirty = true; return this; }
+    UiElement font(String name) { inlineStyle.fontName = name; inlineStyle.hasFontName = true; _dirty = true; return this; }
     UiElement align(String a) {
         String al = a.toLowerCase();
         if (al.equals("center")) inlineStyle.align = 1;
         else if (al.equals("right")) inlineStyle.align = 2;
         else inlineStyle.align = 0;
         inlineStyle.hasAlign = true;
+        _dirty = true;
         return this;
     }
-    UiElement shadow(int s) { inlineStyle.shadow = s; inlineStyle.hasShadow = true; return this; }
-    UiElement asRow() { inlineStyle.isRow = true; inlineStyle.hasDir = true; return this; }
-    UiElement asColumn() { inlineStyle.isRow = false; inlineStyle.hasDir = true; return this; }
-    UiElement center() { inlineStyle.alignItems = 1; inlineStyle.hasAlignItems = true; return this; }
+    UiElement shadow(int s) { inlineStyle.shadow = s; inlineStyle.hasShadow = true; _dirty = true; return this; }
+    UiElement asRow() { inlineStyle.isRow = true; inlineStyle.hasDir = true; _dirty = true; return this; }
+    UiElement asColumn() { inlineStyle.isRow = false; inlineStyle.hasDir = true; _dirty = true; return this; }
+    UiElement center() { inlineStyle.alignItems = 1; inlineStyle.hasAlignItems = true; _dirty = true; return this; }
 
-    // ---- State & Events ----
     String text() { return _text; }
-    UiElement setText(String t) { _text = t; return this; }
+    UiElement setText(String t) { if (!_text.equals(t)) { _text = t; _dirty = true; } return this; }
     bool checked() { return _checked; }
-    UiElement setChecked(bool b) { _checked = b; return this; }
+    UiElement setChecked(bool b) { if (_checked != b) { _checked = b; _dirty = true; } return this; }
     int value() { return _value; }
-    UiElement setValue(int v) { if (v < 0) v = 0; if (v > 100) v = 100; _value = v; return this; }
+    UiElement setValue(int v) { if (v < 0) v = 0; if (v > 100) v = 100; if (_value != v) { _value = v; _dirty = true; } return this; }
     bool clicked() { bool r = _clicked; _clicked = false; return r; }
     bool changed() { bool r = _changed; _changed = false; return r; }
     bool submitted() { bool r = _submitted; _submitted = false; return r; }
@@ -540,8 +532,19 @@ class UiApp {
     UiElement _focused;
     bool _prevDown;
     int _scrollY;
-    int _cursorArrow;
-    int _cursorHand;
+    bool _needPaint;
+    int _lastW; int _lastH;
+
+    // Cached Win32 function pointers
+    int _fIsWin; int _fPeek; int _fTrans; int _fDisp;
+    int _fRect; int _fCur; int _fS2C; int _fKey;
+    int _fGetDC; int _fRelDC; int _fDrawText;
+    int _fBitBlt; int _fSel; int _fDelObj; int _fCreateFont;
+    int _fBk; int _fTc; int _fExt;
+
+    // Reusable scratch buffers (zero per-frame alloc)
+    int _msgBuf; int _rcBuf; int _ptBuf; int _szBuf;
+    Map<String, int> _fonts;
 
     UiApp(String titleStr, int w, int h) {
         _u32 = __winapi(14, (int) "user32.dll");
@@ -555,6 +558,34 @@ class UiApp {
         _focused = null;
         _prevDown = false;
         _scrollY = 0;
+        _needPaint = true;
+        _lastW = 0; _lastH = 0;
+
+        _fIsWin = __winapi(15, _u32, (int) "IsWindow");
+        _fPeek = __winapi(15, _u32, (int) "PeekMessageA");
+        _fTrans = __winapi(15, _u32, (int) "TranslateMessage");
+        _fDisp = __winapi(15, _u32, (int) "DispatchMessageA");
+        _fRect = __winapi(15, _u32, (int) "GetClientRect");
+        _fCur = __winapi(15, _u32, (int) "GetCursorPos");
+        _fS2C = __winapi(15, _u32, (int) "ScreenToClient");
+        _fKey = __winapi(15, _u32, (int) "GetAsyncKeyState");
+        _fGetDC = __winapi(15, _u32, (int) "GetDC");
+        _fRelDC = __winapi(15, _u32, (int) "ReleaseDC");
+        _fDrawText = __winapi(15, _u32, (int) "DrawTextA");
+        _fBitBlt = __winapi(15, _g32, (int) "BitBlt");
+        _fSel = __winapi(15, _g32, (int) "SelectObject");
+        _fDelObj = __winapi(15, _g32, (int) "DeleteObject");
+        _fCreateFont = __winapi(15, _g32, (int) "CreateFontA");
+        _fBk = __winapi(15, _g32, (int) "SetBkMode");
+        _fTc = __winapi(15, _g32, (int) "SetTextColor");
+        _fExt = __winapi(15, _g32, (int) "GetTextExtentPoint32A");
+
+        _msgBuf = __alloc_atomic(48);
+        _rcBuf = __alloc_atomic(16);
+        _ptBuf = __alloc_atomic(8);
+        _szBuf = __alloc_atomic(8);
+        _fonts = new Map<String, int>();
+
         _createWindow(titleStr, w, h);
     }
 
@@ -579,8 +610,7 @@ class UiApp {
         int fUpd = __winapi(15, _u32, (int) "UpdateWindow");
 
         int hInst = __call(fGetMod, 0);
-        _cursorArrow = __call(fLoadCur, 0, 32512);
-        _cursorHand = __call(fLoadCur, 0, 32649);
+        int curArrow = __call(fLoadCur, 0, 32512);
         String clsName = "AdaCUiWindowClass";
 
         int wc = __alloc_atomic(80);
@@ -588,11 +618,10 @@ class UiApp {
         _poke32(wc + 4, 3);
         __poke64(wc + 8, fDefProc);
         __poke64(wc + 24, hInst);
-        __poke64(wc + 40, _cursorArrow);
+        __poke64(wc + 40, curArrow);
         __poke64(wc + 64, (int) clsName);
         __call(fReg, wc);
 
-        // WS_OVERLAPPEDWINDOW = 0x00CF0000, CW_USEDEFAULT = 0x80000000
         _hwnd = __call(fCreate, 0, (int) clsName, (int) titleStr, 0x00CF0000, 0x80000000, 0x80000000, w, h, 0, 0, hInst, 0);
 
         if (_dwm != 0 && _hwnd != 0) {
@@ -600,7 +629,7 @@ class UiApp {
             if (fDwm != 0) {
                 int dark = __alloc_atomic(4);
                 _poke32(dark, 1);
-                __call(fDwm, _hwnd, 20, dark, 4); // DWMWA_USE_IMMERSIVE_DARK_MODE = 20
+                __call(fDwm, _hwnd, 20, dark, 4);
             }
         }
         if (_hwnd != 0) {
@@ -609,63 +638,96 @@ class UiApp {
         }
     }
 
-    // ---- Mode 1: Literal CSS ----
-    UiApp css(String cssRules) { _css.parse(cssRules); return this; }
+    UiApp css(String cssRules) { _css.parse(cssRules); _needPaint = true; return this; }
     UiApp loadCss(String filePath) {
         if (Fs.exists(filePath)) {
             String txt = Fs.readToString(filePath);
-            if (txt != null) _css.parse(txt);
+            if (txt != null) { _css.parse(txt); _needPaint = true; }
         }
         return this;
     }
 
-    // ---- Root widget builders ----
-    UiElement card() { return root.card(); }
-    UiElement row() { return root.row(); }
-    UiElement column() { return root.column(); }
-    UiElement title(String t) { return root.title(t); }
-    UiElement label(String t) { return root.label(t); }
-    UiElement button(String t) { return root.button(t); }
-    UiElement input(String ph) { return root.input(ph); }
-    UiElement toggle(String l, bool init) { return root.toggle(l, init); }
-    UiElement badge(String t) { return root.badge(t); }
-    UiElement progress(int pct) { return root.progress(pct); }
-    UiElement divider() { return root.divider(); }
-    UiElement spacer(int px) { return root.spacer(px); }
+    UiElement card() { _needPaint = true; return root.card(); }
+    UiElement row() { _needPaint = true; return root.row(); }
+    UiElement column() { _needPaint = true; return root.column(); }
+    UiElement title(String t) { _needPaint = true; return root.title(t); }
+    UiElement label(String t) { _needPaint = true; return root.label(t); }
+    UiElement button(String t) { _needPaint = true; return root.button(t); }
+    UiElement input(String ph) { _needPaint = true; return root.input(ph); }
+    UiElement toggle(String l, bool init) { _needPaint = true; return root.toggle(l, init); }
+    UiElement badge(String t) { _needPaint = true; return root.badge(t); }
+    UiElement progress(int pct) { _needPaint = true; return root.progress(pct); }
+    UiElement divider() { _needPaint = true; return root.divider(); }
+    UiElement spacer(int px) { _needPaint = true; return root.spacer(px); }
 
-    // ---- DIB Backbuffer ----
     private void _ensureBuffer(int w, int h) {
         if (w <= 0) w = 1;
         if (h <= 0) h = 1;
         if (_memDC != 0 && _bufW == w && _bufH == h) return;
         int fDelDC = __winapi(15, _g32, (int) "DeleteDC");
-        int fDelObj = __winapi(15, _g32, (int) "DeleteObject");
-        if (_bmp != 0) __call(fDelObj, _bmp);
+        if (_bmp != 0) __call(_fDelObj, _bmp);
         if (_memDC != 0) __call(fDelDC, _memDC);
 
-        int fGetDC = __winapi(15, _u32, (int) "GetDC");
-        int fRelDC = __winapi(15, _u32, (int) "ReleaseDC");
         int fCompDC = __winapi(15, _g32, (int) "CreateCompatibleDC");
         int fDIB = __winapi(15, _g32, (int) "CreateDIBSection");
-        int fSel = __winapi(15, _g32, (int) "SelectObject");
-
-        int hdc = __call(fGetDC, _hwnd);
+        int hdc = __call(_fGetDC, _hwnd);
         _memDC = __call(fCompDC, hdc);
         int bmi = __alloc_atomic(44);
         _poke32(bmi + 0, 40);
         _poke32(bmi + 4, w);
-        _poke32(bmi + 8, 0 - h); // top-down
+        _poke32(bmi + 8, 0 - h);
         _poke16(bmi + 12, 1);
         _poke16(bmi + 14, 32);
         int pBits = __alloc_atomic(8);
         _bmp = __call(fDIB, _memDC, bmi, 0, pBits, 0, 0);
         _bits = __peek64(pBits);
-        __call(fSel, _memDC, _bmp);
-        __call(fRelDC, _hwnd, hdc);
+        __call(_fSel, _memDC, _bmp);
+        __call(_fRelDC, _hwnd, hdc);
         _bufW = w; _bufH = h;
     }
 
-    // ---- Fast 32-bit BGRA Pixel Primitives ----
+    // ---- Ultra-fast span & pixel primitives ----
+    private void _fillSpanOpaque(int y, int x0, int x1, int rgb) {
+        if (y < 0 || y >= _bufH) return;
+        if (x0 < 0) x0 = 0;
+        if (x1 > _bufW) x1 = _bufW;
+        if (x0 >= x1) return;
+        int col = rgb & 0x00FFFFFF;
+        int col2 = col | (col << 32);
+        int addr = _bits + (y * _bufW + x0) * 4;
+        int cnt = x1 - x0;
+        while (cnt >= 2) {
+            __poke64(addr, col2);
+            addr = addr + 8;
+            cnt = cnt - 2;
+        }
+        if (cnt == 1) _poke32(addr, col);
+    }
+
+    private void _fillSpanAlpha(int y, int x0, int x1, int argb) {
+        if (y < 0 || y >= _bufH) return;
+        if (x0 < 0) x0 = 0;
+        if (x1 > _bufW) x1 = _bufW;
+        if (x0 >= x1) return;
+        int a = (argb >> 24) & 255;
+        if (a == 0) return;
+        if (a == 255) { _fillSpanOpaque(y, x0, x1, argb); return; }
+        int sr = (argb >> 16) & 255;
+        int sg = (argb >> 8) & 255;
+        int sb = argb & 255;
+        int ia = 255 - a;
+        int addr = _bits + (y * _bufW + x0) * 4;
+        int end = _bits + (y * _bufW + x1) * 4;
+        while (addr < end) {
+            int dst = _peek32s(addr);
+            int rr = (sr * a + ((dst >> 16) & 255) * ia) / 255;
+            int rg = (sg * a + ((dst >> 8) & 255) * ia) / 255;
+            int rb = (sb * a + (dst & 255) * ia) / 255;
+            _poke32(addr, (rr << 16) | (rg << 8) | rb);
+            addr = addr + 4;
+        }
+    }
+
     private void _blendPixel(int x, int y, int argb) {
         if (x < 0 || y < 0 || x >= _bufW || y >= _bufH) return;
         int a = (argb >> 24) & 255;
@@ -673,16 +735,10 @@ class UiApp {
         int addr = _bits + (y * _bufW + x) * 4;
         if (a == 255) { _poke32(addr, argb & 0x00FFFFFF); return; }
         int dst = _peek32s(addr);
-        int sr = (argb >> 16) & 255;
-        int sg = (argb >> 8) & 255;
-        int sb = argb & 255;
-        int dr = (dst >> 16) & 255;
-        int dg = (dst >> 8) & 255;
-        int db = dst & 255;
         int ia = 255 - a;
-        int rr = (sr * a + dr * ia) / 255;
-        int rg = (sg * a + dg * ia) / 255;
-        int rb = (sb * a + db * ia) / 255;
+        int rr = (((argb >> 16) & 255) * a + ((dst >> 16) & 255) * ia) / 255;
+        int rg = (((argb >> 8) & 255) * a + ((dst >> 8) & 255) * ia) / 255;
+        int rb = ((argb & 255) * a + (dst & 255) * ia) / 255;
         _poke32(addr, (rr << 16) | (rg << 8) | rb);
     }
 
@@ -705,7 +761,7 @@ class UiApp {
         return x;
     }
 
-    // Anti-aliased rounded rectangle with optional gradient and border
+    // Fast anti-aliased rounded rectangle: flat spans for interior, AA only on corners!
     private void _drawRoundRect(int x, int y, int w, int h, int rad, int c1, int c2, bool grad, int bColor, int bWidth) {
         if (w <= 0 || h <= 0) return;
         int maxR = (w < h ? w : h) / 2;
@@ -717,36 +773,59 @@ class UiApp {
         int x1 = x + w > _bufW ? _bufW : x + w;
         int y1 = y + h > _bufH ? _bufH : y + h;
 
-        int rSqOuter = rad * rad;
+        // Fast path: sharp solid rectangle (e.g. window background, dividers)
+        if (rad == 0 && !grad && bWidth == 0) {
+            for (int py = y0; py < y1; py++) _fillSpanAlpha(py, x0, x1, c1);
+            return;
+        }
+
         int rInner = rad - bWidth;
         if (rInner < 0) rInner = 0;
+        int outer = rad * 16;
 
         for (int py = y0; py < y1; py++) {
             int ly = py - y;
             int dy = 0;
             if (ly < rad) dy = rad - ly - 1;
             else if (ly >= h - rad) dy = ly - (h - rad);
-            int dySq = dy * dy;
 
-            for (int px = x0; px < x1; px++) {
+            // Middle rows (no corner curvature): fast spans!
+            if (dy == 0 && !grad) {
+                if (bWidth == 0) {
+                    _fillSpanAlpha(py, x0, x1, c1);
+                } else if (ly < bWidth || ly >= h - bWidth) {
+                    _fillSpanAlpha(py, x0, x1, bColor);
+                } else {
+                    _fillSpanAlpha(py, x, x + bWidth, bColor);
+                    _fillSpanAlpha(py, x + bWidth, x + w - bWidth, c1);
+                    _fillSpanAlpha(py, x + w - bWidth, x + w, bColor);
+                }
+                continue;
+            }
+
+            // Corner rows or gradient: flat span for the middle [rad .. w-rad), AA only for corners!
+            int midL = x + rad;
+            int midR = x + w - rad;
+            if (!grad && midR > midL) {
+                if (bWidth > 0 && (ly < bWidth || ly >= h - bWidth)) _fillSpanAlpha(py, midL, midR, bColor);
+                else _fillSpanAlpha(py, midL, midR, c1);
+            }
+
+            // Left corner + right corner (or full row if grad)
+            int rxStart = grad ? x0 : x0;
+            int rxEnd = grad ? x1 : (midL < x1 ? midL : x1);
+            for (int px = rxStart; px < rxEnd; px++) {
                 int lx = px - x;
                 int dx = 0;
                 if (lx < rad) dx = rad - lx - 1;
                 else if (lx >= w - rad) dx = lx - (w - rad);
-
                 int col = grad ? _lerpColor(c1, c2, lx, w) : c1;
                 if (dx == 0 && dy == 0) {
-                    if (bWidth > 0 && (lx < bWidth || lx >= w - bWidth || ly < bWidth || ly >= h - bWidth)) {
-                        _blendPixel(px, py, bColor);
-                    } else if (((col >> 24) & 255) > 0) {
-                        _blendPixel(px, py, col);
-                    }
+                    if (bWidth > 0 && (lx < bWidth || lx >= w - bWidth || ly < bWidth || ly >= h - bWidth)) _blendPixel(px, py, bColor);
+                    else _blendPixel(px, py, col);
                     continue;
                 }
-
-                // 256x fixed-point distance for smooth AA
                 int dist = _isqrt((dx * 16 + 8) * (dx * 16 + 8) + (dy * 16 + 8) * (dy * 16 + 8));
-                int outer = rad * 16;
                 if (dist >= outer + 12) continue;
                 int cov = 255;
                 if (dist > outer - 12) {
@@ -759,66 +838,73 @@ class UiApp {
                 int ca = ((drawCol >> 24) & 255) * cov / 255;
                 if (ca > 0) _blendPixel(px, py, (ca << 24) | (drawCol & 0x00FFFFFF));
             }
+            if (!grad) {
+                int rStart = midR > x0 ? midR : x0;
+                for (int px = rStart; px < x1; px++) {
+                    int lx = px - x;
+                    int dx = lx - (w - rad);
+                    if (dx < 0) dx = 0;
+                    int dist = _isqrt((dx * 16 + 8) * (dx * 16 + 8) + (dy * 16 + 8) * (dy * 16 + 8));
+                    if (dist >= outer + 12) continue;
+                    int cov = 255;
+                    if (dist > outer - 12) {
+                        cov = (outer + 12 - dist) * 255 / 24;
+                        if (cov < 0) cov = 0;
+                        if (cov > 255) cov = 255;
+                    }
+                    int drawCol = c1;
+                    if (bWidth > 0 && dist >= rInner * 16 - 8) drawCol = bColor;
+                    int ca = ((drawCol >> 24) & 255) * cov / 255;
+                    if (ca > 0) _blendPixel(px, py, (ca << 24) | (drawCol & 0x00FFFFFF));
+                }
+            }
         }
     }
 
+    // Fast outer shadow: only draws the outer shadow halo (skips interior covered by card)
     private void _drawShadow(int x, int y, int w, int h, int rad, int blur) {
         if (blur <= 0) return;
-        int steps = blur > 12 ? 6 : 4;
-        for (int s = steps; s >= 1; s--) {
-            int pad = s * blur / steps;
-            int alpha = (steps - s + 1) * 14 / steps;
-            _drawRoundRect(x - pad / 2, y + pad / 2, w + pad, h + pad, rad + pad / 2, (alpha << 24), 0, false, 0, 0);
-        }
+        int pad = blur / 2;
+        if (pad < 3) pad = 3;
+        _drawRoundRect(x - pad / 2, y + pad, w + pad, h + pad, rad + 2, 0x24000000, 0, false, 0, 0);
+        _drawRoundRect(x - 1, y + 2, w + 2, h + 2, rad + 1, 0x20000000, 0, false, 0, 0);
     }
 
-    // ---- Text measurement & ClearType rendering ----
-    private int _makeFont(int sz, bool isBold, String name) {
-        int fCreateFont = __winapi(15, _g32, (int) "CreateFontA");
+    // ---- Cached ClearType Fonts ----
+    private int _getFont(int sz, bool isBold, String name) {
+        String key = name + ":" + sz + ":" + (isBold ? "1" : "0");
+        if (_fonts.has(key)) return _fonts.get(key);
         int wt = isBold ? 700 : 400;
-        // CLEARTYPE_QUALITY = 5
-        return __call(fCreateFont, 0 - sz, 0, 0, 0, wt, 0, 0, 0, 1, 0, 0, 5, 0, (int) name);
+        int f = __call(_fCreateFont, 0 - sz, 0, 0, 0, wt, 0, 0, 0, 1, 0, 0, 5, 0, (int) name);
+        _fonts.put(key, f);
+        return f;
     }
 
     private int _measureW(String txt, int sz, bool isBold, String fname) {
         if (txt == null || txt.length() == 0) return 0;
-        int fSel = __winapi(15, _g32, (int) "SelectObject");
-        int fDel = __winapi(15, _g32, (int) "DeleteObject");
-        int fExt = __winapi(15, _g32, (int) "GetTextExtentPoint32A");
-        int font = _makeFont(sz, isBold, fname);
-        int old = __call(fSel, _memDC, font);
-        int szBuf = __alloc_atomic(8);
-        __call(fExt, _memDC, (int) txt, __strlen(txt), szBuf);
-        __call(fSel, _memDC, old);
-        __call(fDel, font);
-        return _peek32s(szBuf);
+        int font = _getFont(sz, isBold, fname);
+        int old = __call(_fSel, _memDC, font);
+        __call(_fExt, _memDC, (int) txt, __strlen(txt), _szBuf);
+        __call(_fSel, _memDC, old);
+        return _peek32s(_szBuf);
     }
 
     private void _drawText(String txt, int x, int y, int w, int h, _UiStyle st) {
         if (txt == null || txt.length() == 0) return;
-        int fSel = __winapi(15, _g32, (int) "SelectObject");
-        int fDel = __winapi(15, _g32, (int) "DeleteObject");
-        int fBk = __winapi(15, _g32, (int) "SetBkMode");
-        int fTc = __winapi(15, _g32, (int) "SetTextColor");
-        int fDraw = __winapi(15, _u32, (int) "DrawTextA");
-
-        int font = _makeFont(st.fontSize, st.bold, st.fontName);
-        int old = __call(fSel, _memDC, font);
-        __call(fBk, _memDC, 1); // TRANSPARENT
+        int font = _getFont(st.fontSize, st.bold, st.fontName);
+        int old = __call(_fSel, _memDC, font);
+        __call(_fBk, _memDC, 1);
         int rgb = st.fg & 0x00FFFFFF;
         int bgr = ((rgb & 0xFF) << 16) | (rgb & 0xFF00) | ((rgb >> 16) & 0xFF);
-        __call(fTc, _memDC, bgr);
+        __call(_fTc, _memDC, bgr);
 
-        int rc = __alloc_atomic(16);
-        _poke32(rc + 0, x); _poke32(rc + 4, y);
-        _poke32(rc + 8, x + w); _poke32(rc + 12, y + h);
-        // DT_SINGLELINE (0x20) | DT_VCENTER (0x04) | DT_NOPREFIX (0x800) | align
+        _poke32(_rcBuf + 0, x); _poke32(_rcBuf + 4, y);
+        _poke32(_rcBuf + 8, x + w); _poke32(_rcBuf + 12, y + h);
         int flags = 0x20 | 0x04 | 0x800;
         if (st.align == 1) flags = flags | 1;
         else if (st.align == 2) flags = flags | 2;
-        __call(fDraw, _memDC, (int) txt, __strlen(txt), rc, flags);
-        __call(fSel, _memDC, old);
-        __call(fDel, font);
+        __call(_fDrawText, _memDC, (int) txt, __strlen(txt), _rcBuf, flags);
+        __call(_fSel, _memDC, old);
     }
 
     // ---- Layout Engine ----
@@ -858,7 +944,6 @@ class UiApp {
             return;
         }
 
-        // Container (window, card, row, column)
         int innerW = (st.hasWidth ? st.width : availW) - padX * 2;
         if (innerW < 0) innerW = 0;
         int sumMain = 0;
@@ -910,7 +995,6 @@ class UiApp {
         }
     }
 
-    // ---- Rendering ----
     private void _paint(UiElement el) {
         _UiStyle st = el.computeStyle();
         if (el.tag.equals("spacer")) return;
@@ -938,7 +1022,7 @@ class UiApp {
 
         if (el.tag.equals("input")) {
             String show = el._text.length() > 0 ? el._text : el._placeholder;
-            if (el._text.length() == 0) {
+            if (el._text.length() == 0 && !el.focused) {
                 _UiStyle phSt = new _UiStyle();
                 phSt.copyFrom(st);
                 phSt.fg = 0xFF71717A;
@@ -962,11 +1046,15 @@ class UiApp {
         for (int i = 0; i < el.children.size(); i++) _paint(el.children[i]);
     }
 
-    private void _hitTest(UiElement el, int mx, int my, bool down, bool released) {
+    private bool _hitTest(UiElement el, int mx, int my, bool down, bool released) {
+        bool changed = false;
         bool inside = mx >= el.rx && mx < el.rx + el.rw && my >= el.ry && my < el.ry + el.rh;
-        el.hovered = inside;
+        if (el.hovered != inside) {
+            el.hovered = inside;
+            if (el.tag.equals("button") || el.tag.equals("toggle") || el.tag.equals("input")) changed = true;
+        }
         if (el.tag.equals("button") || el.tag.equals("input") || el.tag.equals("toggle")) {
-            if (inside && down && !_prevDown) el.pressed = true;
+            if (inside && down && !_prevDown) { el.pressed = true; changed = true; }
             if (released) {
                 if (inside && el.pressed) {
                     if (el.tag.equals("button")) el._clicked = true;
@@ -976,90 +1064,98 @@ class UiApp {
                         el.focused = true;
                         _focused = el;
                     }
+                    changed = true;
                 }
-                el.pressed = false;
+                if (el.pressed) { el.pressed = false; changed = true; }
             }
         }
         if (released && !inside && el.tag.equals("input") && el.focused) {
             el.focused = false;
             if (_focused == el) _focused = null;
+            changed = true;
         }
-        for (int i = 0; i < el.children.size(); i++) _hitTest(el.children[i], mx, my, down, released);
+        for (int i = 0; i < el.children.size(); i++) {
+            if (_hitTest(el.children[i], mx, my, down, released)) changed = true;
+        }
+        return changed;
+    }
+
+    private bool _anyDirty(UiElement el) {
+        if (el._dirty) { el._dirty = false; return true; }
+        for (int i = 0; i < el.children.size(); i++) {
+            if (_anyDirty(el.children[i])) return true;
+        }
+        return false;
     }
 
     // ---- Event Loop (call in `while (app.loop())`) ----
     bool loop() {
-        int fIsWin = __winapi(15, _u32, (int) "IsWindow");
-        if (__call(fIsWin, _hwnd) == 0) return false;
+        if (__call(_fIsWin, _hwnd) == 0) return false;
 
-        int fPeek = __winapi(15, _u32, (int) "PeekMessageA");
-        int fTrans = __winapi(15, _u32, (int) "TranslateMessage");
-        int fDisp = __winapi(15, _u32, (int) "DispatchMessageA");
-        int msg = __alloc_atomic(48);
-
-        while (__call(fPeek, msg, 0, 0, 0, 1) != 0) {
-            int mtype = _peek32s(msg + 8);
+        bool hadInput = false;
+        while (__call(_fPeek, _msgBuf, 0, 0, 0, 1) != 0) {
+            int mtype = _peek32s(_msgBuf + 8);
             if (mtype == 0x0102 && _focused != null) { // WM_CHAR
-                int ch = __peek64(msg + 16) & 0xFF;
+                int ch = __peek64(_msgBuf + 16) & 0xFF;
                 if (ch == 8) {
                     int ln = _focused._text.length();
-                    if (ln > 0) { _focused._text = _focused._text.substring(0, ln - 1); _focused._changed = true; }
+                    if (ln > 0) { _focused._text = _focused._text.substring(0, ln - 1); _focused._changed = true; _needPaint = true; }
                 } else if (ch == 13) {
-                    _focused._submitted = true;
+                    _focused._submitted = true; _needPaint = true;
                 } else if (ch >= 32 && ch < 127) {
                     int tmp = __alloc_atomic(2);
                     __poke8(tmp, ch);
                     _focused._text = _focused._text + __str_from(tmp, 1);
                     _focused._changed = true;
+                    _needPaint = true;
                 }
+                hadInput = true;
             } else if (mtype == 0x020A) { // WM_MOUSEWHEEL
-                int delta = (_peek32s(msg + 16) >> 16);
+                int delta = (_peek32s(_msgBuf + 16) >> 16);
                 _scrollY = _scrollY + (delta > 0 ? 30 : -30);
                 if (_scrollY > 0) _scrollY = 0;
+                _needPaint = true;
+                hadInput = true;
+            } else if (mtype == 0x000F) { // WM_PAINT
+                _needPaint = true;
             }
-            __call(fTrans, msg);
-            __call(fDisp, msg);
+            __call(_fTrans, _msgBuf);
+            __call(_fDisp, _msgBuf);
         }
-        if (__call(fIsWin, _hwnd) == 0) return false;
+        if (__call(_fIsWin, _hwnd) == 0) return false;
 
-        // Client size
-        int fRect = __winapi(15, _u32, (int) "GetClientRect");
-        int rc = __alloc_atomic(16);
-        __call(fRect, _hwnd, rc);
-        int cw = _peek32s(rc + 8);
-        int ch = _peek32s(rc + 12);
+        __call(_fRect, _hwnd, _rcBuf);
+        int cw = _peek32s(_rcBuf + 8);
+        int ch = _peek32s(_rcBuf + 12);
         if (cw <= 0) cw = _w;
         if (ch <= 0) ch = _h;
+        if (cw != _lastW || ch != _lastH) { _lastW = cw; _lastH = ch; _needPaint = true; }
 
-        // Mouse state
-        int fCur = __winapi(15, _u32, (int) "GetCursorPos");
-        int fS2C = __winapi(15, _u32, (int) "ScreenToClient");
-        int fKey = __winapi(15, _u32, (int) "GetAsyncKeyState");
-        int pt = __alloc_atomic(8);
-        __call(fCur, pt);
-        __call(fS2C, _hwnd, pt);
-        int mx = _peek32s(pt);
-        int my = _peek32s(pt + 4);
-        bool down = (__call(fKey, 1) & 0x8000) != 0;
+        __call(_fCur, _ptBuf);
+        __call(_fS2C, _hwnd, _ptBuf);
+        int mx = _peek32s(_ptBuf);
+        int my = _peek32s(_ptBuf + 4);
+        bool down = (__call(_fKey, 1) & 0x8000) != 0;
         bool released = _prevDown && !down;
 
-        _ensureBuffer(cw, ch);
-        _measure(root, cw);
-        if (root.rh < ch) root.rh = ch;
-        _layout(root, 0, _scrollY);
-        _hitTest(root, mx, my, down, released);
+        if (_hitTest(root, mx, my, down, released)) _needPaint = true;
         _prevDown = down;
 
-        // Paint & blit
-        _paint(root);
-        int fGetDC = __winapi(15, _u32, (int) "GetDC");
-        int fRelDC = __winapi(15, _u32, (int) "ReleaseDC");
-        int fBitBlt = __winapi(15, _g32, (int) "BitBlt");
-        int hdc = __call(fGetDC, _hwnd);
-        __call(fBitBlt, hdc, 0, 0, cw, ch, _memDC, 0, 0, 0x00CC0020);
-        __call(fRelDC, _hwnd, hdc);
+        if (_anyDirty(root)) _needPaint = true;
 
-        __winapi(9, 16); // ~60 FPS
+        if (_needPaint) {
+            _ensureBuffer(cw, ch);
+            _measure(root, cw);
+            if (root.rh < ch) root.rh = ch;
+            _layout(root, 0, _scrollY);
+            _paint(root);
+            int hdc = __call(_fGetDC, _hwnd);
+            __call(_fBitBlt, hdc, 0, 0, cw, ch, _memDC, 0, 0, 0x00CC0020);
+            __call(_fRelDC, _hwnd, hdc);
+            _needPaint = false;
+        }
+
+        if (!hadInput) __winapi(9, 8);
         return true;
     }
 }
