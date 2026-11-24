@@ -1,0 +1,26 @@
+// alloc::collections::queue - Queue<T>: first in, first out (Rust: VecDeque<T>).
+class Queue<T> {
+    List<T> items;
+    int head;
+    Queue() { items = new List<T>(); head = 0; }
+    void enqueue(T x) { items.add(x); }
+    T dequeue() {
+        if (head >= items.size()) __panic_bounds();
+        T x = items.get(head);
+        head++;
+        if (head > 32 && head * 2 > items.size()) compact();
+        return x;
+    }
+    private void compact() {
+        List<T> rest = new List<T>();
+        for (int i = head; i < items.size(); i++) rest.add(items.get(i));
+        items = rest;
+        head = 0;
+    }
+    T peek() {
+        if (head >= items.size()) __panic_bounds();
+        return items.get(head);
+    }
+    int size() { return items.size() - head; }
+    bool isEmpty() { return size() == 0; }
+}

@@ -1,0 +1,89 @@
+// alloc::collections::map - Map<String, V>, a hash map with String keys (Rust: HashMap).
+
+class Map<V> {
+    int ks; int vs; int n; int cap;
+    public Map() { ks = 0; vs = 0; n = 0; cap = 0; }
+    private int hash(String k) {
+        int h = 7;
+        int p = (int) k;
+        int i = 0;
+        int c = __peek8(p);
+        while (c != 0) { h = h * 31 + c; i++; c = __peek8(p + i); }
+        return h & 0x3FFFFFFFFFFFFFFF;
+    }
+    private int find(String k) {
+        if (cap == 0) return -1;
+        int i = hash(k) & (cap - 1);
+        while (__peek64(ks + 8 * i) != 0) {
+            if (__streq((String) __peek64(ks + 8 * i), k)) return i;
+            i = (i + 1) & (cap - 1);
+        }
+        return -1;
+    }
+    private void putw(String k, int v) {
+        if ((n + 1) * 2 > cap) rehash();
+        int i = hash(k) & (cap - 1);
+        while (__peek64(ks + 8 * i) != 0) {
+            if (__streq((String) __peek64(ks + 8 * i), k)) { __poke64(vs + 8 * i, v); return; }
+            i = (i + 1) & (cap - 1);
+        }
+        __poke64(ks + 8 * i, (int) k);
+        __poke64(vs + 8 * i, v);
+        n++;
+    }
+    private void rehash() {
+        int oc = cap;
+        int ok = ks;
+        int ov = vs;
+        if (cap == 0) cap = 8; else cap = cap * 2;
+        ks = __alloc(8 * cap);
+        vs = __alloc(8 * cap);
+        n = 0;
+        for (int i = 0; i < oc; i++) {
+            int k = __peek64(ok + 8 * i);
+            if (k != 0) putw((String) k, __peek64(ov + 8 * i));
+        }
+    }
+    public void put(String k, V v) { putw(k, (int) v); }
+    public V get(String k) {
+        int i = find(k);
+        if (i < 0) return (V) 0;
+        return (V) __peek64(vs + 8 * i);
+    }
+    public bool has(String k) { return find(k) >= 0; }
+    public int size() { return n; }
+    public bool isEmpty() { return n == 0; }
+    public V remove(String k) {
+        int i = find(k);
+        if (i < 0) return (V) 0;
+        int old = __peek64(vs + 8 * i);
+        __poke64(ks + 8 * i, 0);
+        __poke64(vs + 8 * i, 0);
+        n--;
+        int j = (i + 1) & (cap - 1);
+        while (__peek64(ks + 8 * j) != 0) {            // re-insert the rest of the cluster (linear probing)
+            int k2 = __peek64(ks + 8 * j);
+            int v2 = __peek64(vs + 8 * j);
+            __poke64(ks + 8 * j, 0);
+            __poke64(vs + 8 * j, 0);
+            n--;
+            putw((String) k2, v2);
+            j = (j + 1) & (cap - 1);
+        }
+        return (V) old;
+    }
+    public void clear() {
+        n = 0;
+        if (cap > 0) { ks = __alloc(8 * cap); vs = __alloc(8 * cap); }
+    }
+    public String[] keys() {
+        int arr = __alloc(8 * n + 8);
+        __poke64(arr, n);
+        int k = 0;
+        for (int i = 0; i < cap; i++) {
+            int key = __peek64(ks + 8 * i);
+            if (key != 0) { __poke64(arr + 8 + 8 * k, key); k++; }
+        }
+        return (String[]) arr;
+    }
+}

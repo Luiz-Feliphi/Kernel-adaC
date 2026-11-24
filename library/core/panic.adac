@@ -1,0 +1,21 @@
+// core::panic - fatal runtime errors (null access, bad index, division by zero, unhandled exception).
+
+void __die(String msg) {
+    __ewrite("Runtime error: ");
+    __ewrite(msg);
+    __ewrite("\n");
+    __exit(1);
+}
+
+void __panic_null() { __die("access to a null reference"); }
+
+void __panic_bounds() { __die("array index out of bounds (or negative size)"); }
+
+void __panic_div() { __die("division by zero"); }
+
+void __uncaught(Exception e) {
+    __ewrite("Unhandled exception: ");
+    __ewrite(e.message);
+    __ewrite("\n");
+    __exit(1);
+}

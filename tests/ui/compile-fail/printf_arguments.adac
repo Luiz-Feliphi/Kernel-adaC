@@ -1,0 +1,2 @@
+// error-pattern: expects more arguments
+void main() { printf("%d %d", 1); }

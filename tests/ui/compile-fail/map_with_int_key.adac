@@ -1,0 +1,2 @@
+// error-pattern: Map requires a String key
+void main() { Map<int, int> m; }

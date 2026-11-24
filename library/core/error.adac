@@ -1,0 +1,22 @@
+// core::error - the Exception hierarchy and the runtime type test used by catch.
+
+class Exception {
+    public String message;
+    public Exception() { message = ""; }
+    public Exception(String m) { message = m; }
+    public String getMessage() { return message; }
+}
+
+class RuntimeException extends Exception {
+    public RuntimeException(String m) { super(m); }
+}
+
+bool __instanceof(int obj, int vt) {
+    if (obj == 0) return false;
+    int v = __peek64(obj);
+    while (v != 0) {
+        if (v == vt) return true;
+        v = __peek64(v);
+    }
+    return false;
+}

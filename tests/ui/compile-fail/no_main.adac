@@ -1,0 +1,2 @@
+// error-pattern: function 'main' not found
+void f() { }

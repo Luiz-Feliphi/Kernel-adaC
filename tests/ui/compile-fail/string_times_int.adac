@@ -1,0 +1,2 @@
+// error-pattern: does not apply to types 'String' and 'int'
+void main() { String s = "a"; int x = s * 2; }

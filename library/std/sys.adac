@@ -1,0 +1,43 @@
+// std::sys - the operating-system layer: process handles, console I/O primitives,
+// start-up and the global state shared with the compiler (exception handler chain, stack base).
+
+// Intrinsics (usable only inside library code): __winapi, __peek8/__peek64, __poke8/__poke64,
+// __sp, __gbegin/__gend, __memcpy.
+// __winapi(n, args...) calls KERNEL32 function number n (see compiler/adac_link/pe.h):
+//   0 ExitProcess  1 GetStdHandle  2 WriteFile  3 ReadFile
+//   4 GetProcessHeap  5 HeapAlloc  6 HeapFree  7 SetConsoleOutputCP
+
+int __heap;  int __stdin;  int __stdout;  int __stderr;
+
+int __buf;   int __fend;   int __rbuf;
+
+int __stack_base;          // RSP at program entry (stack base for the GC)
+
+int __exc;                 // exception in flight
+
+int __handler;             // top of the try/catch handler chain
+
+void __exit(int code) { __winapi(0, code); }
+
+void __write(int h, int p, int n) {
+    if (n <= 0) return;
+    __winapi(2, h, p, n, __buf + 192, 0);
+}
+
+void __ewrite(String s) {
+    if (s == null) s = "null";
+    int n = 0;
+    while (__peek8((int) s + n) != 0) n++;
+    __write(__stderr, (int) s, n);
+}
+
+void __setup() {
+    __heap = __winapi(4);
+    __stdin = __winapi(1, -10);
+    __stdout = __winapi(1, -11);
+    __stderr = __winapi(1, -12);
+    __buf = __winapi(5, __heap, 8, 256);
+    __rbuf = __winapi(5, __heap, 8, 4096);
+    __winapi(7, 65001);                 // console in UTF-8
+    __gc_init();
+}

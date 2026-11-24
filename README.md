@@ -25,6 +25,7 @@ build.bat         # Windows with MinGW-w64 (gcc)     → adac.exe
 ./adac program.adac --check                # only check (no .exe)
 ./adac program.adac --strict               # variables must be declared (same as #STRICT)
 ./adac program.adac --tokens               # print the tokens
+./adac program.adac --stdin-name path      # read the program from stdin (used by editors)
 ./adac --dump-prelude [--manual]            # print the embedded runtime
 ```
 
@@ -50,6 +51,7 @@ On success it prints the output size and the total compile time, e.g. `compiled:
 | Access | `public`, `private` (class only), `protected` (class and subclasses), `package`/omitted |
 | Exceptions | `throw`, `try / catch (T e) / finally` (`T` derives from `Exception`; `RuntimeException` already exists) |
 | Arrays | `int[] v = new int[10];` `int[] w = {1,2,3};` `new String[]{"a","b"}`, matrices `new int[3][4]` / `{{1},{2,3}}`, `v[i]`, `v.length` — bounds-checked |
+| Library | `use std::math;` etc. (see *Standard library*); generic classes `class Pair<T> {...}` |
 | Collections | `List<T>` (`add push_back get set insert removeAt pop size indexOf contains`, `l[i]`, `l[i] = x`, for-each) and `Map<String,T>` (`put get has remove size keys`, `m["k"]`, `m["k"] = v`) |
 | Math | `abs`, `min`, `max`, `pow(base, intExponent)`, `sqrt` |
 | Enum / modules | `enum Color { A, B = 5, C }` used as `Color.A` (an `int` with names); `import "other.adac";` |
@@ -67,7 +69,7 @@ Forgetting to declare the variable in `for (_; ...)` produces an explanatory err
 ### Memory: garbage collector **or** manual
 
 * **Default:** garbage collector. A *conservative mark-and-sweep* collector written in adaC
-  (`runtime/gc.adac`): roots are the globals and the stack; it runs when the heap grows past a limit that
+  (`library/alloc/allocator_gc.adac`): roots are the globals and the stack; it runs when the heap grows past a limit that
   adapts to the amount of live data.
 * **`#NOT_GARBAGE`** anywhere at the top level of the file: the collector disappears, the runtime uses direct
   allocation and you release everything with `freeMEM`. Only in this mode do these exist:
@@ -88,38 +90,75 @@ Using `setMen`/`freeMEM` without the directive is a compile error.
 * `#STRICT` — assignment to an undeclared name is an error.
 * `#definePackage: ClassA, ClassB;` (alias `#definePackege`) — marks exported classes; the compiler checks that they exist.
 
+## Editor support (VS Code)
+
+`editors/vscode/` is a VS Code extension: syntax colours, live error checking through the compiler (`adac --check
+--stdin-name`), snippets and build/run commands. Install `adac-language-0.1.0.vsix` (*Extensions → … → Install from VSIX*)
+and set `adac.compilerPath` if `adac` is not in your PATH. See `editors/vscode/README.md`.
+
+## Repository layout (modelled on `rust-lang/rust`)
+
+```
+compiler/   the compiler, one directory per stage: adac_lexer, adac_parse, adac_ast, adac_analysis,
+            adac_codegen, adac_link, adac_driver (+ adac_span, adac_errors, adac_data_structures)
+library/    the standard library written in adaC: core/ (no heap, no OS), alloc/ (heap), std/ (OS)
+src/tools/  build helpers (embed turns library/ into the compiler binary)
+editors/    editor integrations (VS Code extension)
+tests/      harness/ (runner + emulator), ui/ (run-pass, compile-fail, compile-pass), library/
+examples/   sample programs (examples/bin has prebuilt .exe files)
+benchmarks/ C vs adaC vs Python        docs/  architecture, memory model, library reference
+```
+See `docs/ARCHITECTURE.md` for the stage-by-stage description and the rustc comparison.
+
+## Standard library
+
+Layered like Rust's `core` / `alloc` / `std` (`docs/LIBRARY.md`). A *prelude* (printing, strings, `List<T>`,
+`Map<String,V>`, exceptions) is always available; everything else is imported with `use` and compiled into the
+program only when needed:
+
+```c
+use std::math;                  // Math.sin, Math.ln, Math.PI, Int.MAX ...
+use std::option;                // Option<T>      (no more null checks)
+use std::result;                // Result<T>
+use std::collections::Stack;    // Stack<T>, Queue<T>, Set
+use std::boxed::Box;            // Box<T>
+use std::rc::Rc;                // Rc<T> (reference counted)
+use std::string_builder;        // StringBuilder
+use std::char;  use std::time;  use std::fs;
+```
+You can also write your own generic classes: `class Pair<T> { T first; T second; ... }` (see `docs/MEMORY.md` for
+the erasure caveat). `examples/library_tour.adac` shows every module.
+
 ## How the `.exe` is produced
 
-| Module | Role |
-|---|---|
-| `src/lexer.c` | tokens, `//` and `/* */` comments, escapes, hex/binary literals, directives |
-| `src/parser.c` | recursive descent + precedence, error recovery (`setjmp`) |
-| `src/sema.c` | scopes, types, classes/vtables/itables, access control, implicit conversions; rewrites `print`, `printf` and string `+` into runtime calls |
-| `src/x64.c` | x86-64 instruction encoder (REX, ModRM, SIB, SSE2) with labels and fixups |
-| `src/codegen.c` | AST → machine code (convention: result in `RAX`, `double` as bits in `RAX`) |
-| `src/pe.c` | PE32+ headers, `.text/.data/.idata` sections, `KERNEL32.dll` imports, address resolution |
-| `runtime/*.adac` | runtime **written in adaC** (printing, strings, conversions, input, exceptions, collections, GC/allocator) compiled together with every program |
+`adac_lexer` -> `adac_parse` -> `adac_analysis` -> `adac_codegen` -> `adac_link`, driven by `adac_driver`
+(details in `docs/ARCHITECTURE.md`). The executable imports only 14 functions from `KERNEL32.dll`
+(`ExitProcess`, `GetStdHandle`, `WriteFile`, `ReadFile`, `GetProcessHeap`, `HeapAlloc`, `HeapFree`,
+`SetConsoleOutputCP`, `GetTickCount64`, `Sleep`, `CreateFileA`, `GetFileSize`, `CloseHandle`, `GetFileAttributesA`).
+Typical size: 26-35 KB. Exceptions use a handler chain stored in the frame; `finally` also runs on
+`return`/`break`/`continue`.
 
-The executable imports only 8 functions from `KERNEL32.dll` (`ExitProcess`, `GetStdHandle`, `WriteFile`,
-`ReadFile`, `GetProcessHeap`, `HeapAlloc`, `HeapFree`, `SetConsoleOutputCP`). Typical size: 12–20 KB.
-Exceptions use a handler chain stored in the frame (`rbp/rsp` saved); `finally` also runs on `return`/`break`/`continue`.
+## Memory
+
+Garbage-collected by default, manual with `#NOT_GARBAGE`; Rust-style `Option`, `Box` and `Rc` are in the library.
+`docs/MEMORY.md` compares this with Rust's ownership model and lists what is not implemented (ownership /
+borrow checking, automatic `Drop`) together with a roadmap.
 
 ## Tests
 
 ```bash
 pip install unicorn capstone pefile
-make test        # 56 tests
+make test        # python3 tests/harness/compiletest.py
 ```
 
-Because development happened without Windows, `tests/emu.py` **loads the generated PE `.exe` into the Unicorn
-CPU emulator**, simulates the 8 `KERNEL32` functions (including the Windows x64 stack-alignment rule) and compares
-the output. The suite covers arithmetic, floats, strings, classes and inheritance, interfaces, exceptions with
-`finally`, arrays, collections, input, GC under stress (~6 MB of garbage), manual mode with pointers, and 39
-compiler diagnostics. The binaries were also run under Wine.
+Because development happened without Windows, `tests/harness/emu.py` **loads the generated PE `.exe` into the
+Unicorn CPU emulator**, simulates `KERNEL32` (including the Windows x64 stack-alignment rule, an in-memory file
+system and a clock) and compares the output. 64 tests: run-pass programs, 39 compiler diagnostics
+(`tests/ui/compile-fail`) and one test per library module. Earlier versions were also run under Wine.
 
 > **Note:** execution on real Windows has not been tested in the environment where this was developed.
-> The PE structure was validated with `pefile`/`objdump` (no warnings), the code runs in the emulator and under
-> Wine, but please run `examples\bin\*.exe` on a Windows machine and report any difference.
+> The PE structure was validated with `pefile`/`objdump` (no warnings). The `Fs` and `Time` library modules were
+> verified only in the emulator. Please run `examples\bin\*.exe` on a Windows machine and report any difference.
 
 ## About the original `test.adac`
 

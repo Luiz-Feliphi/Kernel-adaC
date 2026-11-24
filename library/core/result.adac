@@ -1,0 +1,19 @@
+// core::result - Result<T>: success with a value, or failure with a message (Rust: Result<T, E>).
+//   Result<int> r = new Result<int>();
+//   r.ok(42);            // or  r.fail("something went wrong");
+class Result<T> {
+    bool success;
+    T value;
+    String message;
+    Result() { success = false; message = "result was never set"; }
+    void ok(T v) { success = true; value = v; message = null; }
+    void fail(String m) { success = false; message = m; }
+    bool isOk() { return success; }
+    bool isErr() { return !success; }
+    String error() { return message; }
+    T unwrap() {
+        if (!success) __die("called Result.unwrap() on an error: " + message);
+        return value;
+    }
+    T unwrapOr(T fallback) { if (success) return value; return fallback; }
+}

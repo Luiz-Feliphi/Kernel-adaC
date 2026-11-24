@@ -1,0 +1,31 @@
+// exit-code: 1
+use std::option;
+use std::result;
+
+Option<int> find(int[] v, int target) {
+    for (int i = 0 to v.length - 1; i++) if (v[i] == target) return new Option<int>(i);
+    return new Option<int>();
+}
+
+Result<int> parsePositive(String s) {
+    Result<int> r = new Result<int>();
+    int n = toInt(s);
+    if (n > 0) r.ok(n); else r.fail("not positive: " + s);
+    return r;
+}
+
+void main() {
+    int[] v = {10, 20, 30};
+    Option<int> a = find(v, 20);
+    Option<int> b = find(v, 99);
+    println(a.isSome(), " ", a.unwrap(), " ", b.isNone(), " ", b.unwrapOr(-1));
+    Option<String> name = new Option<String>("ada");
+    println(name.unwrap().toUpperCase());
+    name.clear();
+    println(name.isSome());
+    Result<int> r1 = parsePositive("42");
+    Result<int> r2 = parsePositive("-5");
+    println(r1.isOk(), " ", r1.unwrap(), " ", r2.isErr(), " ", r2.error(), " ", r2.unwrapOr(0));
+    Option<int> none = new Option<int>();
+    println(none.unwrap());
+}

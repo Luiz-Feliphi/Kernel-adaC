@@ -1,0 +1,3 @@
+// error-pattern: static method
+class A { int x; static int f() { return x; } }
+void main() { }

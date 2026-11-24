@@ -1,0 +1,24 @@
+use std::char;
+use std::string_builder;
+void main() {
+    String s = "Hello, World 42!";
+    StringBuilder sb = new StringBuilder();
+    int digits = 0, letters = 0, spaces = 0;
+    for (int i = 0 to s.length() - 1; i++) {
+        char c = s[i];
+        if (Char.isDigit(c)) digits++;
+        if (Char.isAlpha(c)) letters++;
+        if (Char.isSpace(c)) spaces++;
+        if (Char.isUpper(c)) sb.appendChar(Char.toLower(c)); else sb.appendChar(Char.toUpper(c));
+    }
+    println(digits, " ", letters, " ", spaces, " ", sb.toString(), " ", sb.length());
+    println(Char.toDigit('7') + Char.toDigit('x'), " ", Char.fromDigit(5));
+    StringBuilder big = new StringBuilder();
+    for (int i = 0 to 999) { big.appendInt(i); big.append(","); }
+    big.appendFloat(2.5);
+    String r = big.toString();
+    println(r.length(), " ", r.substring(0, 12), " ", r.substring(r.length() - 8, r.length()));
+    big.clear();
+    big.append("fresh");
+    println(big.toString(), " ", big.isEmpty());
+}

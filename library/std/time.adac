@@ -1,0 +1,5 @@
+// std::time - clocks and sleeping (Rust: std::time::Instant, std::thread::sleep).
+class Time {
+    static int nowMillis() { return __winapi(8); }          // GetTickCount64: milliseconds since boot
+    static void sleep(int millis) { __winapi(9, millis); }  // Sleep
+}

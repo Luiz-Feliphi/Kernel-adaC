@@ -1,0 +1,14 @@
+// core::dispatch - method lookup for calls made through an interface.
+
+// vtable: [parent][itable][methods...]    itable: [n][id, function]*
+int __ifind(int vt, int mid) {
+    int t = __peek64(vt + 8);
+    int n = __peek64(t);
+    int i = 0;
+    while (i < n) {
+        if (__peek64(t + 8 + 16 * i) == mid) return __peek64(t + 16 + 16 * i);
+        i++;
+    }
+    __die("interface method not found");
+    return 0;
+}

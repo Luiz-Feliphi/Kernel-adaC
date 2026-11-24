@@ -1,0 +1,12 @@
+// alloc::collections::set - Set: a set of Strings (Rust: HashSet<String>).
+class Set {
+    Map<String, int> m;
+    Set() { m = new Map<String, int>(); }
+    void add(String s) { m.put(s, 1); }
+    bool contains(String s) { return m.has(s); }
+    void remove(String s) { m.remove(s); }
+    int size() { return m.size(); }
+    bool isEmpty() { return m.isEmpty(); }
+    String[] items() { return m.keys(); }
+    void clear() { m.clear(); }
+}

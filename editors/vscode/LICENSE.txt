@@ -1,0 +1,3 @@
+adaC Language Support for Visual Studio Code
+Copyright (c) the adaC authors.
+All rights reserved. Replace this file with the license you choose for the extension.

@@ -1,0 +1,18 @@
+// core::option - Option<T>: a value that may be absent (Rust: Option<T>). Use it instead of null.
+//   Option<int> a = new Option<int>(5);     // Some(5)
+//   Option<int> b = new Option<int>();      // None
+class Option<T> {
+    bool has;
+    T value;
+    Option() { has = false; }
+    Option(T v) { has = true; value = v; }
+    bool isSome() { return has; }
+    bool isNone() { return !has; }
+    T unwrap() {
+        if (!has) __die("called Option.unwrap() on a None value");
+        return value;
+    }
+    T unwrapOr(T fallback) { if (has) return value; return fallback; }
+    void set(T v) { has = true; value = v; }
+    void clear() { has = false; }
+}

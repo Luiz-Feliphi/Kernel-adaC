@@ -1,0 +1,2 @@
+// error-pattern: unknown type 'Foo'
+void main() { Foo f = new Foo(); }

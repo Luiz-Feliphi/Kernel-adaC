@@ -1,0 +1,52 @@
+// alloc::collections::list - List<T>, the growable array (Rust: Vec<T>).
+
+// T is the element type: List<int>, List<String>, List<Person>, ...
+class List<T> {
+    int data; int n; int cap;
+    public List() { data = 0; n = 0; cap = 0; }
+    private void grow() {
+        int nc = cap * 2;
+        if (nc < 8) nc = 8;
+        int nd = __alloc(8 * nc);
+        if (n > 0) __memcpy(nd, data, 8 * n);
+        data = nd;
+        cap = nc;
+    }
+    public void add(T x) { if (n == cap) grow(); __poke64(data + 8 * n, (int) x); n++; }
+    public void push_back(T x) { add(x); }
+    public T get(int i) {
+        if (i < 0 || i >= n) __panic_bounds();
+        return (T) __peek64(data + 8 * i);
+    }
+    public void set(int i, T x) {
+        if (i < 0 || i >= n) __panic_bounds();
+        __poke64(data + 8 * i, (int) x);
+    }
+    public int size() { return n; }
+    public bool isEmpty() { return n == 0; }
+    public void clear() { n = 0; }
+    public T pop() {
+        if (n == 0) __panic_bounds();
+        n--;
+        return (T) __peek64(data + 8 * n);
+    }
+    public T removeAt(int i) {
+        if (i < 0 || i >= n) __panic_bounds();
+        int r = __peek64(data + 8 * i);
+        for (int k = i; k < n - 1; k++) __poke64(data + 8 * k, __peek64(data + 8 * (k + 1)));
+        n--;
+        return (T) r;
+    }
+    public void insert(int i, T x) {
+        if (i < 0 || i > n) __panic_bounds();
+        if (n == cap) grow();
+        for (int k = n; k > i; k--) __poke64(data + 8 * k, __peek64(data + 8 * (k - 1)));
+        __poke64(data + 8 * i, (int) x);
+        n++;
+    }
+    public int indexOf(T x) {
+        for (int k = 0; k < n; k++) if (__peek64(data + 8 * k) == (int) x) return k;
+        return -1;
+    }
+    public bool contains(T x) { return indexOf(x) >= 0; }
+}

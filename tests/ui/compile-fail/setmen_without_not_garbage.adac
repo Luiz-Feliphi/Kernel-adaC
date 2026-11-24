@@ -1,0 +1,2 @@
+// error-pattern: #NOT_GARBAGE
+void main() { setMen(8); }

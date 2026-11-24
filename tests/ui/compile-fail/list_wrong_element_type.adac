@@ -1,0 +1,2 @@
+// error-pattern: cannot convert 'String' to 'int'
+void main() { List<int> l = new List<int>(); l.add("a"); }

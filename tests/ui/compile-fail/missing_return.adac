@@ -1,0 +1,3 @@
+// error-pattern: must return a value of type 'int'
+int f(int a) { if (a > 0) return 1; }
+void main() { }

@@ -1,0 +1,2 @@
+// error-pattern: exponent must be an integer
+void main() { println(pow(2, 1.5)); }

@@ -1,0 +1,2 @@
+// error-pattern: needs a type argument
+void main() { List l = new List(); }

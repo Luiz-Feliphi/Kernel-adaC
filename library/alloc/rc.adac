@@ -1,0 +1,31 @@
+// alloc::rc - Rc<T>: shared ownership with a reference counter (Rust: Rc<T>).
+//   Rc<int> a = new Rc<int>(5);
+//   Rc<int> b = a.clone();      // a.strongCount() == 2
+//   b.drop();                   // a.strongCount() == 1
+// With the garbage collector the memory is reclaimed automatically; in manual mode the shared cell is
+// released when the last handle calls drop().
+class RcCell {
+    int strong;
+    int value;
+}
+
+class Rc<T> {
+    RcCell cell;
+    Rc(T v) {
+        cell = new RcCell();
+        cell.value = (int) v;
+        cell.strong = 1;
+    }
+    Rc(RcCell shared, int unused) { cell = shared; }
+    Rc<T> clone() {
+        cell.strong++;
+        return new Rc<T>(cell, 0);
+    }
+    T get() { return (T) cell.value; }
+    void set(T v) { cell.value = (int) v; }
+    int strongCount() { return cell.strong; }
+    void drop() {
+        cell.strong--;
+        if (cell.strong == 0) __free((int) cell);
+    }
+}

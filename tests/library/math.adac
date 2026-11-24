@@ -1,0 +1,13 @@
+use std::math;
+void main() {
+    printf("%.4f %.4f %.4f %.4f\n", Math.PI, Math.E, Math.floor(-2.5), Math.ceil(-2.5));
+    printf("%.4f %.4f %.4f %.4f\n", Math.round(2.5), Math.round(-2.4), Math.trunc(-7.9), Math.hypot(3, 4));
+    printf("%.6f %.6f %.6f\n", Math.sin(1), Math.cos(1), Math.tan(0.5));
+    printf("%.6f %.6f %.6f\n", Math.sin(100), Math.cos(-3), Math.sin(Math.toRadians(30)));
+    printf("%.6f %.6f %.6f\n", Math.exp(1), Math.exp(-2.5), Math.exp(10));
+    printf("%.6f %.6f %.6f\n", Math.ln(2), Math.ln(100), Math.log10(1000));
+    printf("%.4f %.4f\n", Math.pow(2, 0.5), Math.pow(10, 3));
+    println(Math.gcd(48, 18), " ", Math.lcm(4, 6), " ", Math.clamp(15, 0, 10), " ", Math.signum(-9), " ", Math.clampf(0.5, 1, 2));
+    println(Int.MAX, " ", Int.MIN);
+    println(Math.toDegrees(Math.PI));
+}

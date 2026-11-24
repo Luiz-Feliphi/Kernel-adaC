@@ -1,0 +1,73 @@
+// core::math - mathematical functions and constants (Rust: f64 methods and std::f64::consts).
+// Everything is a static member of Math / Int:  Math.PI, Math.floor(x), Math.sin(x), Int.MAX ...
+
+class Int {
+    static int MAX = 9223372036854775807;
+    static int MIN = -9223372036854775807 - 1;
+}
+
+class Math {
+    static float PI = 3.141592653589793;
+    static float E = 2.718281828459045;
+    static float LN2 = 0.6931471805599453;
+    static float LN10 = 2.302585092994046;
+
+    static float floor(float x) { float t = (float) ((int) x); if (t > x) t = t - 1.0; return t; }
+    static float ceil(float x) { float t = (float) ((int) x); if (t < x) t = t + 1.0; return t; }
+    static float trunc(float x) { return (float) ((int) x); }
+    static float round(float x) { return floor(x + 0.5); }
+    static float toRadians(float deg) { return deg * PI / 180.0; }
+    static float toDegrees(float rad) { return rad * 180.0 / PI; }
+    static float hypot(float a, float b) { return sqrt(a * a + b * b); }
+
+    static float sin(float x) {
+        float twoPi = 2.0 * PI;
+        x = x - twoPi * floor(x / twoPi);              // [0, 2pi)
+        if (x > PI) x = x - twoPi;                     // (-pi, pi]
+        float term = x;
+        float sum = x;
+        for (int k = 1; k < 30; k++) {
+            term = -term * x * x / ((2 * k) * (2 * k + 1));
+            sum += term;
+        }
+        return sum;
+    }
+    static float cos(float x) { return sin(x + PI / 2.0); }
+    static float tan(float x) { return sin(x) / cos(x); }
+
+    static float exp(float x) {
+        int k = 0;
+        while (abs(x) > 0.5) { x = x / 2.0; k++; }     // exp(x) = exp(x / 2^k) ^ (2^k)
+        float term = 1.0;
+        float sum = 1.0;
+        for (int i = 1; i < 25; i++) { term = term * x / i; sum += term; }
+        while (k > 0) { sum = sum * sum; k--; }
+        return sum;
+    }
+
+    static float ln(float x) {
+        if (x <= 0.0) return 0.0 / 0.0;                // NaN
+        int n = 0;
+        while (x > 1.5) { x = x / 2.0; n++; }
+        while (x < 0.75) { x = x * 2.0; n--; }
+        float y = (x - 1.0) / (x + 1.0);               // ln(x) = 2 * atanh(y)
+        float y2 = y * y;
+        float term = y;
+        float sum = 0.0;
+        for (int k = 0; k < 40; k++) { sum += term / (2 * k + 1); term = term * y2; }
+        return 2.0 * sum + n * LN2;
+    }
+    static float log10(float x) { return ln(x) / LN10; }
+    static float pow(float base, float exponent) { return exp(exponent * ln(base)); }
+
+    static int gcd(int a, int b) {
+        a = abs(a);
+        b = abs(b);
+        while (b != 0) { int t = a % b; a = b; b = t; }
+        return a;
+    }
+    static int lcm(int a, int b) { if (a == 0 || b == 0) return 0; return abs(a / gcd(a, b) * b); }
+    static int clamp(int v, int lo, int hi) { if (v < lo) return lo; if (v > hi) return hi; return v; }
+    static float clampf(float v, float lo, float hi) { if (v < lo) return lo; if (v > hi) return hi; return v; }
+    static int signum(int v) { if (v > 0) return 1; if (v < 0) return -1; return 0; }
+}

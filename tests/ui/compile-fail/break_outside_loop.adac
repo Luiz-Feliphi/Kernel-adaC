@@ -1,0 +1,2 @@
+// error-pattern: 'break' outside a loop
+void main() { break; }

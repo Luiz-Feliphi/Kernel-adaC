@@ -17,10 +17,11 @@ if errorlevel 1 (
 )
 
 cd /d "%~dp0"
+if not exist build mkdir build
 
-gcc -O1 -o tools\embed.exe tools\embed.c || exit /b 1
-tools\embed.exe ADAC_RT_CORE runtime\core.adac ADAC_RT_GC runtime\gc.adac ADAC_RT_MANUAL runtime\manual.adac > src\prelude_data.c || exit /b 1
-gcc -O2 -std=gnu11 -o adac.exe src\util.c src\lexer.c src\types.c src\parser.c src\sema.c src\x64.c src\pe.c src\codegen.c src\main.c src\prelude_data.c || exit /b 1
+gcc -O1 -o build\embed.exe src\tools\embed\embed.c || exit /b 1
+build\embed.exe library > build\library_data.c || exit /b 1
+gcc -O2 -std=gnu11 -Icompiler -o adac.exe compiler\adac_data_structures\data_structures.c compiler\adac_span\span.c compiler\adac_errors\errors.c compiler\adac_lexer\lexer.c compiler\adac_ast\types.c compiler\adac_parse\parser.c compiler\adac_analysis\sema.c compiler\adac_codegen\x64.c compiler\adac_codegen\codegen.c compiler\adac_link\pe.c compiler\adac_driver\main.c build\library_data.c || exit /b 1
 
 echo.
 echo adac.exe built. Usage:  adac.exe examples\hello.adac -o hello.exe

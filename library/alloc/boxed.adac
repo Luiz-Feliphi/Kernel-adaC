@@ -1,0 +1,8 @@
+// alloc::boxed - Box<T>: a value stored on the heap behind a handle (Rust: Box<T>).
+// In manual-memory mode (#NOT_GARBAGE) release it with freeMEM(box).
+class Box<T> {
+    T value;
+    Box(T v) { value = v; }
+    T get() { return value; }
+    void set(T v) { value = v; }
+}
