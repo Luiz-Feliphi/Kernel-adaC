@@ -35,7 +35,7 @@ static double now_ms(void) {
 typedef struct { const char *kind, *path, *text; } AdacLibModule;
 extern const AdacLibModule ADAC_LIBRARY[];
 
-#define VERSION "1.0"
+#define VERSION "1.2.3"
 
 static void usage(void) {
     fprintf(stderr,
