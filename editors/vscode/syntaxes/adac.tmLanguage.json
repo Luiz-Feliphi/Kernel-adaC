@@ -22,7 +22,7 @@
       "include": "#use-declaration"
     },
     {
-      "include": "#import"
+      "include": "#import-declaration"
     },
     {
       "include": "#for-header"
@@ -106,8 +106,16 @@
       },
       "patterns": [
         {
+          "name": "constant.character.escape.unicode.adac",
+          "match": "\\\\U[0-9a-fA-F]{8}"
+        },
+        {
+          "name": "constant.character.escape.unicode.adac",
+          "match": "\\\\u[0-9a-fA-F]{4}"
+        },
+        {
           "name": "constant.character.escape.adac",
-          "match": "\\\\(?:[nrt0abfv\\\\'\"]|x[0-9a-fA-F]{1,2})"
+          "match": "\\\\(?:[nrt0abfv\\\\\\'\""]|x[0-9a-fA-F]{1,2})"
         },
         {
           "name": "constant.other.placeholder.adac",
@@ -121,7 +129,7 @@
     },
     "chars": {
       "name": "string.quoted.single.adac",
-      "match": "'(?:[^'\\\\\\n]|\\\\(?:[nrt0abfv\\\\'\"]|x[0-9a-fA-F]{1,2}))'"
+      "match": "'(?:[^'\\\\\\n]|\\\\(?:[nrt0abfv\\\\\\'\""]|x[0-9a-fA-F]{1,2}|u[0-9a-fA-F]{4}|U[0-9a-fA-F]{8}))'"
     },
     "directives": {
       "match": "(#)(NOT_GARBAGE|NOT_GARGBAGE|STRICT|strict|definePackage|definePackege)\\b",
@@ -163,13 +171,47 @@
         }
       ]
     },
-    "import": {
-      "match": "^\\s*(import)\\b",
-      "captures": {
-        "1": {
-          "name": "keyword.control.import.adac"
+    "import-declaration": {
+      "patterns": [
+        {
+          "comment": "import with module path: import std::pc; or import std.pc; or import mylib;",
+          "begin": "^\\s*(import)\\b(?=\\s+[A-Za-z_])",
+          "beginCaptures": {
+            "1": {
+              "name": "keyword.control.import.adac"
+            }
+          },
+          "end": ";",
+          "endCaptures": {
+            "0": {
+              "name": "punctuation.terminator.statement.adac"
+            }
+          },
+          "patterns": [
+            {
+              "name": "punctuation.separator.namespace.adac",
+              "match": "::|\\."
+            },
+            {
+              "name": "keyword.operator.wildcard.adac",
+              "match": "\\*"
+            },
+            {
+              "name": "entity.name.namespace.adac",
+              "match": "\\b[A-Za-z_][A-Za-z0-9_]*\\b"
+            }
+          ]
+        },
+        {
+          "comment": "import with string path: import \"file.adac\";",
+          "match": "^\\s*(import)\\b",
+          "captures": {
+            "1": {
+              "name": "keyword.control.import.adac"
+            }
+          }
         }
-      }
+      ]
     },
     "for-header": {
       "begin": "\\b(for)\\b\\s*(\\()",
@@ -278,7 +320,7 @@
       ]
     },
     "library-types": {
-      "match": "\\b(List|Map|Option|Result|Box|Rc|Stack|Queue|Set|StringBuilder|Math|Char|Int|Time|Fs|Exception|RuntimeException)\\b",
+      "match": "\\b(List|Map|Option|Result|Box|Rc|Stack|Queue|Set|StringBuilder|Math|Char|Int|Time|Fs|Exception|RuntimeException|Pc|Database|Db|Sqlite|DbTable|Web|WebApp|HttpRequest|Json|Ui|UiApp|UiElement|Utf8)\\b",
       "name": "support.class.adac"
     },
     "numbers": {

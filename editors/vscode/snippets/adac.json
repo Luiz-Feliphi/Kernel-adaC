@@ -37,7 +37,8 @@
   "matrix": { "prefix": "matrix", "body": "${1:int}[][] ${2:grid} = new ${1:int}[${3:3}][${4:3}];", "description": "2-D array" },
   "use": { "prefix": "use", "body": "use std::${1:math};", "description": "Import a standard-library module" },
   "use collections": { "prefix": "usec", "body": "use std::collections::${1|Stack,Queue,Set|};", "description": "Import a collection" },
-  "import": { "prefix": "import", "body": "import \"${1:file}.adac\";", "description": "Import another adaC file" },
+  "import file": { "prefix": "importf", "body": "import \"${1:file}.adac\";", "description": "Import another adaC file by path" },
+  "import module": { "prefix": "import", "body": "import ${1|std::pc,std::db,std::web,std::ui,std::unicode|};", "description": "Import a standard-library module" },
   "manual memory": { "prefix": "manual", "body": "#NOT_GARBAGE", "description": "Turn the garbage collector off" },
   "strict": { "prefix": "strict", "body": "#STRICT", "description": "Assignments must be declared" },
   "package": { "prefix": "package", "body": "#definePackage: ${1:ClassA}, ${2:ClassB};", "description": "Export classes" },
@@ -46,5 +47,119 @@
   "result": { "prefix": "result", "body": ["Result<${1:int}> ${2:r} = new Result<${1:int}>();", "${2:r}.ok(${3:value});"], "description": "Result<T> (use std::result)" },
   "string builder": { "prefix": "sb", "body": ["StringBuilder ${1:sb} = new StringBuilder();", "${1:sb}.append(\"${2:text}\");", "String ${3:result} = ${1:sb}.toString();"], "description": "StringBuilder (use std::string_builder)" },
   "ternary": { "prefix": "tern", "body": "${1:condition} ? ${2:a} : ${3:b}", "description": "Conditional expression" },
-  "region": { "prefix": "region", "body": ["// #region ${1:name}", "$0", "// #endregion"], "description": "Foldable region" }
+  "region": { "prefix": "region", "body": ["// #region ${1:name}", "$0", "// #endregion"], "description": "Foldable region" },
+
+  "import std::pc": { "prefix": "importpc", "body": "import std::pc;", "description": "Import the PC control library" },
+  "import std::db": { "prefix": "importdb", "body": "import std::db;", "description": "Import the database library" },
+  "import std::web": { "prefix": "importweb", "body": "import std::web;", "description": "Import the web/HTTP library" },
+  "import std::ui": { "prefix": "importui", "body": "import std::ui;", "description": "Import the native UI library" },
+  "import std::unicode": { "prefix": "importutf", "body": "import std::unicode;", "description": "Import the Unicode/UTF-8 library" },
+
+  "PC run command": {
+    "prefix": "pcrun",
+    "body": ["import std::pc;", "", "void main() {", "\tPc pc = new Pc();", "\tString ${1:result} = pc.run(\"${2:dir}\");", "\tprintln(${1:result});", "}"],
+    "description": "Run a system command and capture output"
+  },
+  "PC file operations": {
+    "prefix": "pcfile",
+    "body": ["Pc pc = new Pc();", "pc.mkdir(\"${1:folder}\");", "pc.cp(\"${2:src}\", \"${3:dst}\");", "pc.ls(\"${4:.\");"],
+    "description": "File operations (mkdir, cp, ls)"
+  },
+  "PC system info": {
+    "prefix": "pcsys",
+    "body": ["Pc pc = new Pc();", "println(\"Host: \" + pc.hostname());", "println(\"CPU cores: \" + toString(pc.cpuCores()));", "println(\"RAM: \" + toString(pc.ramTotalMB()) + \" MB\");"],
+    "description": "Get system info (hostname, CPU, RAM)"
+  },
+
+  "Database key-value": {
+    "prefix": "dbkv",
+    "body": ["import std::db;", "", "void main() {", "\tDb db = new Db(\"${1:data.db}\");", "\tdb.set(\"${2:key}\", \"${3:value}\");", "\tString val = db.get(\"${2:key}\");", "\tprintln(val);", "\tdb.close();", "}"],
+    "description": "Key-value database with file persistence"
+  },
+  "Database SQL table": {
+    "prefix": "dbsql",
+    "body": ["import std::db;", "", "void main() {", "\tDatabase db = new Database(\"${1:app.db}\");", "\tdb.exec(\"CREATE TABLE ${2:users} (id, name, email)\");", "\tdb.exec(\"INSERT INTO ${2:users} VALUES (1, 'Alice', 'alice@mail.com')\");", "\tString result = db.query(\"SELECT * FROM ${2:users}\");", "\tprintln(result);", "\tdb.close();", "}"],
+    "description": "SQL-style relational database"
+  },
+  "SQLite": {
+    "prefix": "sqlite",
+    "body": ["import std::db;", "", "void main() {", "\tSqlite sq = new Sqlite(\"${1:file.sqlite}\");", "\tsq.exec(\"CREATE TABLE IF NOT EXISTS ${2:items} (id INTEGER PRIMARY KEY, name TEXT)\");", "\tsq.exec(\"INSERT INTO ${2:items} (name) VALUES ('test')\");", "\tsq.close();", "}"],
+    "description": "SQLite database via sqlite3.dll FFI"
+  },
+
+  "Web server": {
+    "prefix": "webserver",
+    "body": ["import std::web;", "", "void main() {", "\tWebApp app = new WebApp();", "", "\tapp.get(\"/\", \"handleHome\");", "\tapp.get(\"/api/hello\", \"handleHello\");", "", "\tprintln(\"Server on http://localhost:${1:8080}\");", "\tapp.listen(${1:8080});", "}", "", "String handleHome(HttpRequest req) {", "\treturn \"<h1>Hello adaC!</h1>\";", "}", "", "String handleHello(HttpRequest req) {", "\tJson j = new Json();", "\tj.set(\"message\", \"Hello from adaC\");", "\treturn j.encode();", "}"],
+    "description": "HTTP web server with routing"
+  },
+  "Web JSON": {
+    "prefix": "webjson",
+    "body": ["Json j = new Json();", "j.set(\"${1:key}\", \"${2:value}\");", "String encoded = j.encode();", "println(encoded);"],
+    "description": "Create and encode JSON"
+  },
+  "Web HTTP client": {
+    "prefix": "webclient",
+    "body": ["Web web = new Web();", "String response = web.httpGet(\"${1:http://example.com}\");", "println(response);"],
+    "description": "HTTP GET request"
+  },
+
+  "UI window (CSS mode)": {
+    "prefix": "uicss",
+    "body": [
+      "import std::ui;",
+      "",
+      "void main() {",
+      "\tUiApp app = Ui.app(\"${1:My App}\", ${2:800}, ${3:600});",
+      "",
+      "\tUiElement label = app.label(\"${4:Hello adaC!}\");",
+      "\tlabel.css(\"font-size: 24px; color: #333; text-align: center;\");",
+      "",
+      "\tUiElement btn = app.button(\"Click me\");",
+      "\tbtn.css(\"background: #0078D4; color: white; padding: 10px 24px; border-radius: 6px;\");",
+      "\tbtn.onClick(\"onBtnClick\");",
+      "",
+      "\tapp.show();",
+      "}",
+      "",
+      "void onBtnClick() {",
+      "\tprintln(\"Button clicked!\");",
+      "}"
+    ],
+    "description": "Native UI window with CSS-style layout"
+  },
+  "UI window (fluent mode)": {
+    "prefix": "uifluent",
+    "body": [
+      "import std::ui;",
+      "",
+      "void main() {",
+      "\tUiApp app = Ui.app(\"${1:My App}\", ${2:800}, ${3:600});",
+      "",
+      "\tUiElement label = app.label(\"${4:Hello adaC!}\");",
+      "\tlabel.fontSize(24).fontColor(\"#333\").textAlign(\"center\");",
+      "",
+      "\tUiElement btn = app.button(\"Click me\");",
+      "\tbtn.bg(\"#0078D4\").fontColor(\"white\").padding(10).radius(6);",
+      "\tbtn.onClick(\"onBtnClick\");",
+      "",
+      "\tapp.show();",
+      "}",
+      "",
+      "void onBtnClick() {",
+      "\tprintln(\"Button clicked!\");",
+      "}"
+    ],
+    "description": "Native UI window with fluent inline styling"
+  },
+
+  "UTF-8 encode": {
+    "prefix": "utf8",
+    "body": ["import std::unicode;", "", "Utf8 u = new Utf8();", "int codeLen = u.len(\"${1:Hello}\");", "String ch = u.at(\"${1:Hello}\", ${2:0});", "println(ch);"],
+    "description": "UTF-8 string operations"
+  },
+  "Unicode escape": {
+    "prefix": "uescape",
+    "body": "String ${1:heart} = \"\\u${2:2764}\";",
+    "description": "Unicode escape sequence \\uXXXX"
+  }
 }

@@ -71,14 +71,24 @@ function toDiagnostics(doc, items, showWarnings) {
   return result;
 }
 
+/** Returns extra CLI arguments from the user's settings. */
+function extraArgs(doc) {
+  const args = [];
+  const cfg = config(doc);
+  if (cfg.get('strict')) args.push('--strict');
+  const libPath = cfg.get('libPath');
+  if (libPath && typeof libPath === 'string' && libPath.trim().length > 0) {
+    args.push('-L', libPath.trim());
+  }
+  return args;
+}
+
 /** Runs `adac --check` on the text of the document (no need to save). */
 function check(doc, done) {
   if (!doc || doc.languageId !== 'adac' || doc.uri.scheme !== 'file') return;
-  const cfg = config(doc);
   const compiler = compilerFor(doc);
   const file = doc.uri.fsPath;
-  const args = ['--check', '--no-color', '--stdin-name', file];
-  if (cfg.get('strict')) args.push('--strict');
+  const args = ['--check', '--no-color', '--stdin-name', file, ...extraArgs(doc)];
 
   const key = doc.uri.toString();
   const previous = running.get(key);
@@ -104,6 +114,7 @@ function check(doc, done) {
     if (running.get(key) !== child) return;          // a newer check replaced this one
     running.delete(key);
     const items = parseCompilerOutput(stderr);
+    const cfg = config(doc);
     collection.set(doc.uri, toDiagnostics(doc, items, cfg.get('showWarnings') !== false));
     if (done) done(items.filter((i) => i.severity === 'error').length);
   });
@@ -129,8 +140,7 @@ async function build() {
   await doc.save();
   const compiler = compilerFor(doc);
   const exe = doc.uri.fsPath.replace(/\.adac$/i, '') + '.exe';
-  const args = [doc.uri.fsPath, '-o', exe, '--no-color'];
-  if (config(doc).get('strict')) args.push('--strict');
+  const args = [doc.uri.fsPath, '-o', exe, '--no-color', ...extraArgs(doc)];
   output.clear();
   output.show(true);
   output.appendLine(`> ${compiler} ${args.map((a) => (a.includes(' ') ? `"${a}"` : a)).join(' ')}`);

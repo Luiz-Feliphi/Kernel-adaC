@@ -1,13 +1,13 @@
 {
   "name": "adac-language",
   "displayName": "adaC Language Support",
-  "description": "Syntax highlighting, live error checking, snippets and build commands for the adaC programming language (.adac).",
-  "version": "0.1.0",
+  "description": "Syntax highlighting, live error checking, snippets and build commands for the adaC programming language (.adac). Includes support for std::pc, std::db, std::web, std::ui and std::unicode libraries.",
+  "version": "0.2.0",
   "publisher": "adac",
   "license": "SEE LICENSE IN LICENSE.txt",
   "engines": { "vscode": "^1.75.0" },
   "categories": ["Programming Languages", "Linters", "Snippets"],
-  "keywords": ["adac", "adaC", "compiler", "language"],
+  "keywords": ["adac", "adaC", "compiler", "language", "native", "ui", "web", "database"],
   "activationEvents": ["onLanguage:adac"],
   "main": "./extension.js",
   "contributes": {
@@ -47,6 +47,11 @@
           "type": "string",
           "default": "adac",
           "description": "Path to the adaC compiler executable (adac or adac.exe). Leave as 'adac' if it is in your PATH."
+        },
+        "adac.libPath": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "Extra library search path passed as `-L <path>` to the compiler. The compiler already searches `libs/` and `lib/` relative to the source file."
         },
         "adac.checkOnChange": {
           "type": "boolean",
