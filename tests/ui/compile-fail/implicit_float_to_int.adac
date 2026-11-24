@@ -1,0 +1,2 @@
+// error-pattern: use an explicit cast
+void main() { int a = 3.5; }

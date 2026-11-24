@@ -1,0 +1,2 @@
+// error-pattern: instanceof only applies
+void main() { int x = 1; bool b = x instanceof String; }

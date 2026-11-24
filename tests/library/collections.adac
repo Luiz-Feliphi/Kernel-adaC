@@ -1,0 +1,24 @@
+use std::collections::Stack;
+use std::collections::Queue;
+use std::collections::Set;
+void main() {
+    Stack<int> st = new Stack<int>();
+    for (int i = 1 to 5; i++) st.push(i * i);
+    println(st.size(), " ", st.peek(), " ", st.pop(), " ", st.pop(), " ", st.size());
+    Stack<String> words = new Stack<String>();
+    words.push("a"); words.push("b");
+    println(words.pop() + words.pop(), " ", words.isEmpty());
+
+    Queue<int> q = new Queue<int>();
+    for (int i = 0 to 99; i++) q.enqueue(i);
+    int sum = 0;
+    for (int i = 0 to 59; i++) sum += q.dequeue();     // forces compaction
+    println(q.size(), " ", q.peek(), " ", sum);
+    q.enqueue(1000);
+    println(q.size(), " ", q.dequeue());
+
+    Set s = new Set();
+    s.add("x"); s.add("y"); s.add("x"); s.add("z");
+    s.remove("y");
+    println(s.size(), " ", s.contains("x"), " ", s.contains("y"), " ", len(s.items()));
+}

@@ -1,0 +1,112 @@
+// core::str - string inspection and parsing that never allocates.
+
+int __strlen(String s) {
+    if (s == null) return 0;
+    int p = (int) s;
+    int n = 0;
+    while (__peek8(p + n) != 0) n++;
+    return n;
+}
+
+bool __streq(String a, String b) {
+    if ((int) a == (int) b) return true;
+    if ((int) a == 0 || (int) b == 0) return false;
+    int i = 0;
+    while (true) {
+        int x = __peek8((int) a + i);
+        int y = __peek8((int) b + i);
+        if (x != y) return false;
+        if (x == 0) return true;
+        i++;
+    }
+}
+
+int __strcmp(String a, String b) {
+    if (a == null) a = "";
+    if (b == null) b = "";
+    int i = 0;
+    while (true) {
+        int x = __peek8((int) a + i);
+        int y = __peek8((int) b + i);
+        if (x != y) return x - y;
+        if (x == 0) return 0;
+        i++;
+    }
+}
+
+int __indexof(String s, String t) {
+    int ls = __strlen(s);
+    int lt = __strlen(t);
+    int i = 0;
+    while (i + lt <= ls) {
+        int j = 0;
+        while (j < lt && __peek8((int) s + i + j) == __peek8((int) t + j)) j++;
+        if (j == lt) return i;
+        i++;
+    }
+    return -1;
+}
+
+int __atoi(String s) {
+    if (s == null) return 0;
+    int p = (int) s;
+    int i = 0;
+    while (__peek8(p + i) == 32 || __peek8(p + i) == 9) i++;
+    bool neg = false;
+    if (__peek8(p + i) == 45) { neg = true; i++; }
+    else if (__peek8(p + i) == 43) i++;
+    int v = 0;
+    while (__peek8(p + i) >= 48 && __peek8(p + i) <= 57) {
+        v = v * 10 + (__peek8(p + i) - 48);
+        i++;
+    }
+    if (neg) return -v;
+    return v;
+}
+
+float __atof(String s) {
+    if (s == null) return 0.0;
+    int p = (int) s;
+    int i = 0;
+    while (__peek8(p + i) == 32 || __peek8(p + i) == 9) i++;
+    bool neg = false;
+    if (__peek8(p + i) == 45) { neg = true; i++; }
+    else if (__peek8(p + i) == 43) i++;
+    float v = 0.0;
+    while (__peek8(p + i) >= 48 && __peek8(p + i) <= 57) {
+        v = v * 10.0 + (float) (__peek8(p + i) - 48);
+        i++;
+    }
+    if (__peek8(p + i) == 46 || __peek8(p + i) == 44) {
+        i++;
+        float scale = 0.1;
+        while (__peek8(p + i) >= 48 && __peek8(p + i) <= 57) {
+            v = v + scale * (float) (__peek8(p + i) - 48);
+            scale = scale / 10.0;
+            i++;
+        }
+    }
+    if (neg) return -v;
+    return v;
+}
+
+bool __isws(int c) { return c == 32 || c == 9 || c == 10 || c == 13; }
+
+bool __isempty(String s) { return __strlen(s) == 0; }
+
+bool __contains(String s, String t) { return __indexof(s, t) >= 0; }
+
+bool __startswith(String s, String t) {
+    int lt = __strlen(t);
+    if (lt > __strlen(s)) return false;
+    for (int i = 0; i < lt; i++) if (__peek8((int) s + i) != __peek8((int) t + i)) return false;
+    return true;
+}
+
+bool __endswith(String s, String t) {
+    int lt = __strlen(t);
+    int off = __strlen(s) - lt;
+    if (off < 0) return false;
+    for (int i = 0; i < lt; i++) if (__peek8((int) s + off + i) != __peek8((int) t + i)) return false;
+    return true;
+}

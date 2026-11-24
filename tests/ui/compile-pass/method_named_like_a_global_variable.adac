@@ -1,0 +1,4 @@
+// compile-pass
+area = 1.5;
+class A { float area() { return 2.0; } float f() { return area(); } }
+void main() { }

@@ -1,0 +1,50 @@
+// std::io - printing and reading from the console.
+
+void __print_str(String s) {
+    if (s == null) s = "null";
+    __write(__stdout, (int) s, __strlen(s));
+}
+
+void __print_int(int n) { int p = __fmt_int(n); __write(__stdout, p, __fend - p); }
+
+void __print_char(int c) { int p = __fmt_char(c); __write(__stdout, p, __fend - p); }
+
+void __print_hex(int n, int prefix) { int p = __fmt_hex(n, prefix); __write(__stdout, p, __fend - p); }
+
+void __print_float(float x, int prec) { int p = __fmt_float(x, prec); __write(__stdout, p, __fend - p); }
+
+void __print_bool(bool b) { if (b) __print_str("true"); else __print_str("false"); }
+
+void __print_nl() { __print_str("\n"); }
+
+String __read_line() {
+    int n = 0;
+    while (n < 4095) {
+        int r = __winapi(3, __stdin, __rbuf + n, 1, __buf + 192, 0) & 0xFFFFFFFF;
+        int got = __peek64(__buf + 192) & 0xFFFFFFFF;
+        if (r == 0 || got == 0) break;
+        if (__peek8(__rbuf + n) == 10) break;
+        n++;
+    }
+    if (n > 0 && __peek8(__rbuf + n - 1) == 13) n--;
+    return __str_from(__rbuf, n);
+}
+
+int __read_int() { return __atoi(__read_line()); }
+
+float __read_float() { return __atof(__read_line()); }
+
+// flags: bit0 = left-align ('-'), bit1 = zero-fill ('0')
+void __print_pad(String s, int width, int flags) {
+    int n = __strlen(s);
+    int pad = width - n;
+    if (pad < 0) pad = 0;
+    int c = 32;
+    if ((flags & 2) != 0 && (flags & 1) == 0) c = 48;
+    if ((flags & 1) == 0) {
+        if (c == 48 && n > 0 && __peek8((int) s) == 45) { __print_str("-"); s = __substr(s, 1, n); }
+        for (int i = 0; i < pad; i++) __print_char(c);
+    }
+    __print_str(s);
+    if ((flags & 1) != 0) for (int i = 0; i < pad; i++) __print_char(32);
+}

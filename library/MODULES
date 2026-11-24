@@ -1,0 +1,40 @@
+# adaC standard library registry.
+#
+# kind    path (relative to library/)
+#   always  - compiled into every program (the "prelude")
+#   gc      - allocator used by default (garbage collector)
+#   manual  - allocator used with #NOT_GARBAGE
+#   opt     - compiled only when a program says `use <path>;`
+#
+# Layers (same idea as Rust):  core  -> no heap, no OS
+#                              alloc -> needs the heap
+#                              std   -> needs the operating system (re-exports core + alloc)
+
+always  std/sys.adac
+always  core/error.adac
+always  core/panic.adac
+always  core/str.adac
+always  core/num.adac
+always  core/fmt.adac
+always  core/dispatch.adac
+always  alloc/string.adac
+always  alloc/array.adac
+always  alloc/collections/list.adac
+always  alloc/collections/map.adac
+always  std/io.adac
+gc      alloc/allocator_gc.adac
+manual  alloc/allocator_manual.adac
+
+# ---- optional modules: loaded only by `use`, e.g.  use std::collections::Stack;
+opt     core/math.adac
+opt     core/char.adac
+opt     core/option.adac
+opt     core/result.adac
+opt     alloc/string_builder.adac
+opt     alloc/boxed.adac
+opt     alloc/rc.adac
+opt     alloc/collections/stack.adac
+opt     alloc/collections/queue.adac
+opt     alloc/collections/set.adac
+opt     std/time.adac
+opt     std/fs.adac

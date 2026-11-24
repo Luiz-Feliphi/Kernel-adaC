@@ -1,0 +1,83 @@
+// A tour of the adaC standard library (core / alloc / std).
+// Only the modules named in `use` are compiled into the program.
+use std::math;                       // core::math      Math, Int
+use std::char;                       // core::char      Char
+use std::option;                     // core::option    Option<T>
+use std::result;                     // core::result    Result<T>
+use std::string_builder;             // alloc::string_builder   StringBuilder
+use std::collections::Stack;         // alloc::collections      Stack<T>
+use std::collections::Queue;         //                         Queue<T>
+use std::collections::Set;           //                         Set
+use std::boxed::Box;                 // alloc::boxed    Box<T>
+use std::rc::Rc;                     // alloc::rc       Rc<T>
+use std::time;                       // std::time       Time
+
+// A generic class written by the user: T is an opaque 64-bit value.
+class Pair<T> {
+    T first; T second;
+    Pair(T a, T b) { first = a; second = b; }
+    void swap() { T t = first; first = second; second = t; }
+}
+
+Option<int> indexOf(int[] v, int x) {
+    for (int i = 0 to v.length - 1; i++) if (v[i] == x) return new Option<int>(i);
+    return new Option<int>();                            // None: no null needed
+}
+
+Result<float> safeDivide(float a, float b) {
+    Result<float> r = new Result<float>();
+    if (b == 0) r.fail("division by zero"); else r.ok(a / b);
+    return r;
+}
+
+void main() {
+    // core::math
+    printf("sin(30 deg) = %.3f | e^1 = %.5f | ln(100) = %.4f | gcd(48,18) = %d\n",
+           Math.sin(Math.toRadians(30)), Math.exp(1), Math.ln(100), Math.gcd(48, 18));
+    println("largest int: ", Int.MAX);
+
+    // core::option / core::result
+    int[] data = {7, 11, 13};
+    println(indexOf(data, 11).unwrap(), " ", indexOf(data, 99).isNone(), " ", indexOf(data, 99).unwrapOr(-1));
+    Result<float> q = safeDivide(1, 4), z = safeDivide(1, 0);
+    println(q.unwrap(), " | ", z.error());
+
+    // alloc: StringBuilder + core::char
+    StringBuilder sb = new StringBuilder();
+    String word = "adaC language";
+    for (int i = 0 to word.length() - 1; i++) {
+        char c = word[i];
+        if (Char.isAlpha(c)) sb.appendChar(Char.toUpper(c));
+    }
+    println(sb.toString(), " (", sb.length(), " letters)");
+
+    // alloc::collections
+    Stack<String> undo = new Stack<String>();
+    undo.push("type"); undo.push("paste"); undo.push("delete");
+    println(undo.pop(), ", ", undo.pop(), " | left: ", undo.size());
+    Queue<int> jobs = new Queue<int>();
+    for (int i = 1 to 4; i++) jobs.enqueue(i * 10);
+    println(jobs.dequeue(), " ", jobs.dequeue(), " | waiting: ", jobs.size());
+    Set tags = new Set();
+    tags.add("fast"); tags.add("safe"); tags.add("fast");
+    println(tags.size(), " ", tags.contains("safe"), " ", tags.contains("slow"));
+
+    // alloc::boxed / alloc::rc
+    Box<int> counter = new Box<int>(0);
+    for (int i = 0 to 9) counter.set(counter.get() + i);
+    Rc<String> name = new Rc<String>("shared name");
+    Rc<String> alias = name.clone();
+    println(counter.get(), " | ", alias.get(), " x", name.strongCount());
+    alias.drop();
+    println("after drop: x", name.strongCount());
+
+    // a user-defined generic class
+    Pair<String> p = new Pair<String>("left", "right");
+    p.swap();
+    println(p.first, " ", p.second);
+
+    // std::time
+    int start = Time.nowMillis();
+    Time.sleep(5);
+    println("clock never goes backwards: ", Time.nowMillis() >= start);
+}

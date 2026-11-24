@@ -1,0 +1,2 @@
+// error-pattern: cannot convert 'String' to 'int'
+void main() { int a = "hi"; }

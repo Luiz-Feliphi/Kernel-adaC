@@ -1,0 +1,2 @@
+// error-pattern: classes cannot be declared inside functions
+void main() { class C { } }

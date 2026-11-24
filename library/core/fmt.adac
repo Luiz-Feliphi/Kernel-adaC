@@ -1,0 +1,96 @@
+// core::fmt - number-to-text formatting into the shared scratch buffer.
+
+// All of them write into __buf, back to front, ending at __fend.
+int __fmt_int(int n) {
+    __fend = __buf + 128;
+    int p = __fend;
+    bool neg = n < 0;
+    if (n == 0) { p--; __poke8(p, 48); }
+    while (n != 0) {
+        int d = n % 10;
+        if (d < 0) d = -d;
+        p--;
+        __poke8(p, 48 + d);
+        n = n / 10;
+    }
+    if (neg) { p--; __poke8(p, 45); }
+    return p;
+}
+
+int __fmt_hex(int n, int prefix) {
+    __fend = __buf + 128;
+    int p = __fend;
+    if (n == 0) { p--; __poke8(p, 48); }
+    int i = 0;
+    while (i < 16 && n != 0) {
+        int d = n & 15;
+        p--;
+        if (d < 10) __poke8(p, 48 + d); else __poke8(p, 87 + d);
+        n = (n >> 4) & 0x0FFFFFFFFFFFFFFF;
+        i++;
+    }
+    if (prefix != 0) { p--; __poke8(p, 120); p--; __poke8(p, 48); }
+    return p;
+}
+
+int __fmt_char(int c) {
+    int e = __buf + 128;
+    __fend = e;
+    if (c < 128) { __poke8(e - 1, c); return e - 1; }
+    if (c < 2048) {
+        __poke8(e - 2, 192 | (c >> 6));
+        __poke8(e - 1, 128 | (c & 63));
+        return e - 2;
+    }
+    if (c < 65536) {
+        __poke8(e - 3, 224 | (c >> 12));
+        __poke8(e - 2, 128 | ((c >> 6) & 63));
+        __poke8(e - 1, 128 | (c & 63));
+        return e - 3;
+    }
+    __poke8(e - 4, 240 | (c >> 18));
+    __poke8(e - 3, 128 | ((c >> 12) & 63));
+    __poke8(e - 2, 128 | ((c >> 6) & 63));
+    __poke8(e - 1, 128 | (c & 63));
+    return e - 4;
+}
+
+// prec < 0: automatic format (up to 6 decimals, no trailing zeros)
+int __fmt_float(float x, int prec) {
+    __fend = __buf + 128;
+    int p = __fend;
+    if (x != x) { p = p - 3; __poke8(p, 110); __poke8(p + 1, 97); __poke8(p + 2, 110); return p; }
+    bool neg = x < 0.0;
+    if (neg) x = -x;
+    if (x > 9000000000000000000.0) {
+        p = p - 3; __poke8(p, 105); __poke8(p + 1, 110); __poke8(p + 2, 102);
+        if (neg) { p--; __poke8(p, 45); }
+        return p;
+    }
+    bool autop = prec < 0;
+    if (autop) prec = 6;
+    if (prec > 15) prec = 15;
+    float scale = 1.0;
+    int k = 0;
+    while (k < prec) { scale = scale * 10.0; k++; }
+    int ip = (int) x;
+    float fp = x - (float) ip;
+    int fi = (int) (fp * scale + 0.5);
+    int si = (int) scale;
+    if (fi >= si) { ip = ip + 1; fi = fi - si; }
+    int j = 0;
+    while (j < prec) {
+        p--;
+        __poke8(p, 48 + fi % 10);
+        fi = fi / 10;
+        j++;
+    }
+    if (prec > 0) { p--; __poke8(p, 46); }
+    if (ip == 0) { p--; __poke8(p, 48); }
+    while (ip != 0) { p--; __poke8(p, 48 + ip % 10); ip = ip / 10; }
+    if (neg) { p--; __poke8(p, 45); }
+    if (autop) {
+        while (__peek8(__fend - 1) == 48 && __peek8(__fend - 2) != 46) __fend--;
+    }
+    return p;
+}

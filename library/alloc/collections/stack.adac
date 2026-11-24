@@ -1,0 +1,11 @@
+// alloc::collections::stack - Stack<T>: last in, first out.
+class Stack<T> {
+    List<T> items;
+    Stack() { items = new List<T>(); }
+    void push(T x) { items.add(x); }
+    T pop() { return items.pop(); }
+    T peek() { return items.get(items.size() - 1); }
+    int size() { return items.size(); }
+    bool isEmpty() { return items.isEmpty(); }
+    void clear() { items.clear(); }
+}

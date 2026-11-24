@@ -1,0 +1,2 @@
+// error-pattern: variable 'x' is not declared
+void main() { println(x); }

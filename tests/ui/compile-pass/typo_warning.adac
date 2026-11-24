@@ -1,0 +1,2 @@
+// compile-pass
+void main() { total = 1; println(total); totl = 2; println(totl); }

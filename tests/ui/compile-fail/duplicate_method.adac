@@ -1,0 +1,3 @@
+// error-pattern: is already declared in this class
+class A { void f() {} void f() {} }
+void main() { }

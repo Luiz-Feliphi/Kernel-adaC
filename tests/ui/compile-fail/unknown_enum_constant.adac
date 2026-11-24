@@ -1,0 +1,3 @@
+// error-pattern: has no constant 'B'
+enum E { A }
+void main() { println(E.B); }

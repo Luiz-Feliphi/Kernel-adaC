@@ -1,0 +1,3 @@
+// error-pattern: is static
+class A { static void f() { } }
+void main() { A a = new A(); a.f(); }

@@ -1,0 +1,2 @@
+// error-pattern: an empty array literal needs a type
+void main() { a = {}; }

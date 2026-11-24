@@ -1,0 +1,26 @@
+// core::num - integer and floating-point helpers (abs, min, max, pow).
+
+int   __absi(int x) { if (x < 0) return -x; return x; }
+
+float __absf(float x) { if (x < 0.0) return -x; return x; }
+
+int   __mini(int a, int b) { if (a < b) return a; return b; }
+
+int   __maxi(int a, int b) { if (a > b) return a; return b; }
+
+float __minf(float a, float b) { if (a < b) return a; return b; }
+
+float __maxf(float a, float b) { if (a > b) return a; return b; }
+
+float __powi(float b, int e) {
+    bool neg = e < 0;
+    if (neg) e = -e;
+    float r = 1.0;
+    while (e > 0) {
+        if ((e & 1) != 0) r = r * b;
+        b = b * b;
+        e = e >> 1;
+    }
+    if (neg) return 1.0 / r;
+    return r;
+}

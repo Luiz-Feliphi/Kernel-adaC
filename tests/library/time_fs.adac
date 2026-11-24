@@ -1,0 +1,14 @@
+use std::time;
+use std::fs;
+void main() {
+    int t0 = Time.nowMillis();
+    Time.sleep(10);
+    int t1 = Time.nowMillis();
+    println(t1 >= t0);
+    println(Fs.exists("adac_test_file.txt"));
+    println(Fs.writeString("adac_test_file.txt", "line one\nline two\n"));
+    println(Fs.exists("adac_test_file.txt"));
+    String text = Fs.readToString("adac_test_file.txt");
+    println(text.length(), " ", text.split("\n")[1]);
+    println(Fs.readToString("does_not_exist.txt") == null);
+}

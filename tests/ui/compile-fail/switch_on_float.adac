@@ -1,0 +1,2 @@
+// error-pattern: 'switch' accepts int, char, bool or String
+void main() { float f = 1.0; switch (f) { default: break; } }

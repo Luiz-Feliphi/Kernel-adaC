@@ -1,0 +1,27 @@
+// alloc::string_builder - StringBuilder: efficient text building (Rust: String / String::push_str).
+class StringBuilder {
+    int buf; int n; int cap;
+    StringBuilder() { cap = 32; buf = __alloc_atomic(cap + 1); n = 0; }
+    private void ensure(int extra) {
+        if (n + extra <= cap) return;
+        int nc = cap * 2 + extra;
+        int nb = __alloc_atomic(nc + 1);
+        __memcpy(nb, buf, n);
+        buf = nb;
+        cap = nc;
+    }
+    void append(String s) {
+        if (s == null) s = "null";
+        int k = __strlen(s);
+        ensure(k);
+        __memcpy(buf + n, (int) s, k);
+        n = n + k;
+    }
+    void appendChar(char c) { ensure(1); __poke8(buf + n, c); n++; }
+    void appendInt(int v) { append(__itoa(v)); }
+    void appendFloat(float v) { append(__ftoa(v, -1)); }
+    int length() { return n; }
+    bool isEmpty() { return n == 0; }
+    void clear() { n = 0; }
+    String toString() { return __str_from(buf, n); }
+}

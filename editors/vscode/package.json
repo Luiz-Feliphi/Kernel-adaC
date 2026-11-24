@@ -1,0 +1,75 @@
+{
+  "name": "adac-language",
+  "displayName": "adaC Language Support",
+  "description": "Syntax highlighting, live error checking, snippets and build commands for the adaC programming language (.adac).",
+  "version": "0.1.0",
+  "publisher": "adac",
+  "license": "SEE LICENSE IN LICENSE.txt",
+  "engines": { "vscode": "^1.75.0" },
+  "categories": ["Programming Languages", "Linters", "Snippets"],
+  "keywords": ["adac", "adaC", "compiler", "language"],
+  "activationEvents": ["onLanguage:adac"],
+  "main": "./extension.js",
+  "contributes": {
+    "languages": [
+      {
+        "id": "adac",
+        "aliases": ["adaC", "adac"],
+        "extensions": [".adac"],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      { "language": "adac", "scopeName": "source.adac", "path": "./syntaxes/adac.tmLanguage.json" }
+    ],
+    "snippets": [
+      { "language": "adac", "path": "./snippets/adac.json" }
+    ],
+    "commands": [
+      { "command": "adac.check", "title": "adaC: Check Current File" },
+      { "command": "adac.build", "title": "adaC: Build Current File (.exe)" },
+      { "command": "adac.run", "title": "adaC: Build and Run Current File", "icon": "$(play)" }
+    ],
+    "menus": {
+      "editor/title/run": [
+        { "command": "adac.run", "when": "resourceLangId == adac", "group": "navigation" }
+      ],
+      "commandPalette": [
+        { "command": "adac.check", "when": "resourceLangId == adac" },
+        { "command": "adac.build", "when": "resourceLangId == adac" },
+        { "command": "adac.run", "when": "resourceLangId == adac" }
+      ]
+    },
+    "configuration": {
+      "title": "adaC",
+      "properties": {
+        "adac.compilerPath": {
+          "type": "string",
+          "default": "adac",
+          "description": "Path to the adaC compiler executable (adac or adac.exe). Leave as 'adac' if it is in your PATH."
+        },
+        "adac.checkOnChange": {
+          "type": "boolean",
+          "default": true,
+          "description": "Check the file for errors while you type (without saving). When off, it is checked on open and on save."
+        },
+        "adac.checkDelay": {
+          "type": "number",
+          "default": 350,
+          "minimum": 0,
+          "description": "Milliseconds to wait after the last keystroke before checking."
+        },
+        "adac.strict": {
+          "type": "boolean",
+          "default": false,
+          "description": "Pass --strict to the compiler: assigning to an undeclared variable is an error."
+        },
+        "adac.showWarnings": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show compiler warnings (for example, a probable typo in a variable name)."
+        }
+      }
+    }
+  }
+}

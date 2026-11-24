@@ -1,0 +1,25 @@
+// std::fs - whole-file reading and writing (Rust: std::fs::read_to_string / write).
+class Fs {
+    static bool exists(String path) {
+        int attrs = __winapi(13, (int) path) & 0xFFFFFFFF;       // GetFileAttributesA
+        return attrs != 0xFFFFFFFF;
+    }
+    // returns null when the file cannot be opened
+    static String readToString(String path) {
+        int h = __winapi(10, (int) path, 0x80000000, 1, 0, 3, 128, 0);   // CreateFileA(read, share read, existing)
+        if (h == -1) return null;
+        int size = __winapi(11, h, 0) & 0xFFFFFFFF;                       // GetFileSize
+        int p = __alloc_atomic(size + 1);
+        __winapi(3, h, p, size, __buf + 192, 0);                          // ReadFile
+        __winapi(12, h);                                                  // CloseHandle
+        return (String) p;
+    }
+    // creates or overwrites the file; returns false on failure
+    static bool writeString(String path, String text) {
+        int h = __winapi(10, (int) path, 0x40000000, 0, 0, 2, 128, 0);   // CreateFileA(write, always create)
+        if (h == -1) return false;
+        __write(h, (int) text, __strlen(text));
+        __winapi(12, h);
+        return true;
+    }
+}

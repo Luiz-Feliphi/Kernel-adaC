@@ -1,0 +1,13 @@
+// alloc::array - heap-allocated array helpers (matrices).
+
+int __newarr2(int n, int m) {
+    if (n < 0 || m < 0) __panic_bounds();
+    int outer = __alloc(8 * n + 8);
+    __poke64(outer, n);
+    for (int i = 0; i < n; i++) {
+        int row = __alloc(8 * m + 8);
+        __poke64(row, m);
+        __poke64(outer + 8 + 8 * i, row);
+    }
+    return outer;
+}

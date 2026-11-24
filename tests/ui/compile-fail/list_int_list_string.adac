@@ -1,0 +1,2 @@
+// error-pattern: different element types
+void main() { List<int> a = new List<int>(); List<String> b = a; }

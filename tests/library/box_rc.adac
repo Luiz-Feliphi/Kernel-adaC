@@ -1,0 +1,23 @@
+use std::boxed::Box;
+use std::rc::Rc;
+class Config { String name; int level; Config(String n, int l) { name = n; level = l; } }
+void main() {
+    Box<int> b = new Box<int>(5);
+    b.set(b.get() * 3);
+    println(b.get());
+    Box<Config> bc = new Box<Config>(new Config("main", 2));
+    println(bc.get().name, " ", bc.get().level);
+
+    Rc<Config> a = new Rc<Config>(new Config("shared", 7));
+    Rc<Config> c = a.clone();
+    Rc<Config> d = c.clone();
+    println(a.strongCount(), " ", a.get().name, " ", d.get().level);
+    c.get().level = 99;
+    println(a.get().level, " ", d.strongCount());
+    c.drop();
+    d.drop();
+    println(a.strongCount());
+    Rc<int> n = new Rc<int>(41);
+    n.set(n.get() + 1);
+    println(n.get());
+}

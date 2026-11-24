@@ -1,0 +1,4 @@
+// error-pattern: does not implement method 'f' of interface 'I'
+interface I { void f(); }
+class C implements I { }
+void main() { }

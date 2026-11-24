@@ -1,0 +1,122 @@
+// alloc::string - operations that build new Strings on the heap.
+
+String __str_from(int p, int len) {
+    int q = __alloc_atomic(len + 1);
+    __memcpy(q, p, len);
+    return (String) q;
+}
+
+String __concat(String a, String b) {
+    if (a == null) a = "null";
+    if (b == null) b = "null";
+    int la = __strlen(a);
+    int lb = __strlen(b);
+    int p = __alloc_atomic(la + lb + 1);
+    __memcpy(p, (int) a, la);
+    __memcpy(p + la, (int) b, lb);
+    return (String) p;
+}
+
+String __substr(String s, int a, int b) {
+    int n = __strlen(s);
+    if (a < 0) a = 0;
+    if (b > n) b = n;
+    if (b < a) b = a;
+    return __str_from((int) s + a, b - a);
+}
+
+String __itoa(int n) { int p = __fmt_int(n); return __str_from(p, __fend - p); }
+
+String __ctoa(int c) { int p = __fmt_char(c); return __str_from(p, __fend - p); }
+
+String __ptoa(int n) { int p = __fmt_hex(n, 1); return __str_from(p, __fend - p); }
+
+String __ftoa(float x, int prec) { int p = __fmt_float(x, prec); return __str_from(p, __fend - p); }
+
+String __btoa(bool b) { if (b) return "true"; return "false"; }
+
+String __xtoa(int n, int prefix) { int p = __fmt_hex(n, prefix); return __str_from(p, __fend - p); }
+
+String __trim(String s) {
+    int n = __strlen(s);
+    int a = 0;
+    while (a < n && __isws(__peek8((int) s + a))) a++;
+    int b = n;
+    while (b > a && __isws(__peek8((int) s + b - 1))) b--;
+    return __substr(s, a, b);
+}
+
+String __upper(String s) {
+    int n = __strlen(s);
+    int p = __alloc_atomic(n + 1);
+    for (int i = 0; i < n; i++) {
+        int c = __peek8((int) s + i);
+        if (c >= 97 && c <= 122) c = c - 32;
+        __poke8(p + i, c);
+    }
+    return (String) p;
+}
+
+String __lower(String s) {
+    int n = __strlen(s);
+    int p = __alloc_atomic(n + 1);
+    for (int i = 0; i < n; i++) {
+        int c = __peek8((int) s + i);
+        if (c >= 65 && c <= 90) c = c + 32;
+        __poke8(p + i, c);
+    }
+    return (String) p;
+}
+
+String __repeat(String s, int n) {
+    int ls = __strlen(s);
+    if (n < 0) n = 0;
+    int p = __alloc_atomic(ls * n + 1);
+    for (int i = 0; i < n; i++) __memcpy(p + i * ls, (int) s, ls);
+    return (String) p;
+}
+
+String __replace(String s, String a, String b) {
+    int la = __strlen(a);
+    if (la == 0) return s;
+    int lb = __strlen(b);
+    int ls = __strlen(s);
+    int cnt = 0;
+    int i = 0;
+    while (i + la <= ls) {
+        if (__startswith(__substr(s, i, i + la), a)) { cnt++; i = i + la; } else i++;
+    }
+    int p = __alloc_atomic(ls + cnt * (lb - la) + 1);
+    int o = 0;
+    i = 0;
+    while (i < ls) {
+        if (i + la <= ls && __streq(__substr(s, i, i + la), a)) { __memcpy(p + o, (int) b, lb); o = o + lb; i = i + la; }
+        else { __poke8(p + o, __peek8((int) s + i)); o++; i++; }
+    }
+    return (String) p;
+}
+
+String[] __split(String s, String sep) {
+    int ls = __strlen(s);
+    int lp = __strlen(sep);
+    int cnt = 1;
+    if (lp > 0) {
+        int i = 0;
+        while (i + lp <= ls) {
+            if (__streq(__substr(s, i, i + lp), sep)) { cnt++; i = i + lp; } else i++;
+        }
+    }
+    int arr = __alloc(8 * cnt + 8);
+    __poke64(arr, cnt);
+    int start = 0;
+    int k = 0;
+    int i = 0;
+    while (lp > 0 && i + lp <= ls) {
+        if (__streq(__substr(s, i, i + lp), sep)) {
+            __poke64(arr + 8 + 8 * k, (int) __substr(s, start, i));
+            k++; i = i + lp; start = i;
+        } else i++;
+    }
+    __poke64(arr + 8 + 8 * k, (int) __substr(s, start, ls));
+    return (String[]) arr;
+}

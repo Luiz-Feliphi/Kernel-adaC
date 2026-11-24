@@ -1,0 +1,4 @@
+// error-pattern: does not implement abstract method
+abstract class A { abstract void f(); }
+class C extends A { }
+void main() { }

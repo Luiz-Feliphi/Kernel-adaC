@@ -1,0 +1,2 @@
+// error-pattern: with 'for(_; ...)' the variable must exist
+void main() { for (_; i <= 3; i++) { } }
