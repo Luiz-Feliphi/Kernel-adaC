@@ -1,0 +1,46 @@
+// Example demonstrating the new import syntax + std::pc + std::db + std::web!
+import std::pc;
+import std::db;
+import std::web;
+
+void main() {
+    // 1. PC control & system info
+    println("=== PC Info ===");
+    println("User: ", Pc.user(), " @ ", Pc.hostname());
+    println("CPU cores: ", Pc.cpuCores(), ", RAM free: ", Pc.ramFreeMB(), " MB / ", Pc.ramTotalMB(), " MB");
+    println("CWD: ", Pc.cwd());
+
+    // 2. Database (Key-Value + SQL tables)
+    println("=== Database ===");
+    var db = Db.open("app.db");
+    db.set("app_name", "Kernel-adaC Backend");
+    db.exec("CREATE TABLE users (id, name, role)");
+    db.exec("INSERT INTO users VALUES ('1', 'Ana', 'admin')");
+    db.exec("INSERT INTO users VALUES ('2', 'Joao', 'user')");
+
+    var admins = db.query("SELECT * FROM users WHERE role = 'admin'");
+    println("Admins count: ", admins.size());
+
+    // 3. Web Backend (HTTP/1.1 + JSON + DB)
+    println("=== Web Backend ===");
+    var app = Web.listen(8080);
+    println("Listening on http://localhost:8080");
+
+    while (app.next()) {
+        var req = app.req();
+        if (req.is("GET", "/")) {
+            app.html("<h1>" + db.get("app_name") + "</h1><p>Rodando em adaC!</p>");
+        } else if (req.is("GET", "/api/users")) {
+            app.json(Json.fromList(db.selectAll("users")));
+        } else if (req.is("POST", "/api/users")) {
+            var body = Json.parse(req.body);
+            db.insertRow("users", body);
+            app.status(201).json(Json.obj("status", "created"));
+        } else if (req.startsWith("GET", "/pc/env/")) {
+            String name = req.param("/pc/env/");
+            app.json(Json.obj(name, Pc.env(name)));
+        } else {
+            app.status(404).json(Json.obj("error", "not found"));
+        }
+    }
+}

@@ -10,6 +10,7 @@ enum {
     API_ExitProcess, API_GetStdHandle, API_WriteFile, API_ReadFile,
     API_GetProcessHeap, API_HeapAlloc, API_HeapFree, API_SetConsoleOutputCP,
     API_GetTickCount64, API_Sleep, API_CreateFileA, API_GetFileSize, API_CloseHandle, API_GetFileAttributesA,
+    API_LoadLibraryA, API_GetProcAddress,
     API__COUNT
 };
 

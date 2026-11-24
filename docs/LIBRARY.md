@@ -51,6 +51,9 @@ name as a module it imports.
 | `std::rc::Rc` | `Rc<T>` | `clone get set strongCount drop` |
 | `std::time` | `Time` | `nowMillis()`, `sleep(ms)` |
 | `std::fs` | `Fs` | `exists(path)`, `readToString(path)` (null on failure), `writeString(path, text)` |
+| `std::pc` | `Pc` | `run(cmd)`, `exec(cmd)`, `open(target)`, `env`, `setEnv`, `cwd`, `cd`, `mkdir`, `rmdir`, `rm`, `mv`, `cp`, `ls`, `exists`, `isDir`, `user`, `hostname`, `cpuCores`, `ramTotalMB`, `ramFreeMB`, `uptimeMs`, `beep`, `alert`, `confirm`, `clipboardGet`, `clipboardSet`, `mouseX`, `mouseY`, `setMouse`, `windowTitle` |
+| `std::db` | `Database`, `Db`, `Sqlite` | `Db.open(path)`, KV (`set`, `get`, `has`, `del`, `keys`), Tables (`createTable`, `insert`, `insertRow`, `selectAll`, `where`, `updateWhere`, `deleteWhere`, `count`, `tables`), simple SQL (`exec`, `query`), `save`/`commit`, plus optional `Sqlite` (`sqlite3.dll`) |
+| `std::web` | `Web`, `WebApp`, `HttpRequest`, `Json` | `Web.listen(port)`, `app.next()`, `app.req()` (`is`, `startsWith`, `param`, `query`, `header`, `body`), `app.status()`, `app.header()`, `app.text()`, `app.html()`, `app.json()`, `app.sendFile()`, `app.redirect()`, `Web.get(ip, port, path)`, `Json.obj/fromMap/fromList/parse` |
 
 `List<T>`: `add push_back get set insert removeAt pop size isEmpty clear indexOf contains`, `l[i]`, `l[i] = x`.
 `Map<String,V>`: `put get has remove size isEmpty clear keys`, `m["k"]`, `m["k"] = v`.

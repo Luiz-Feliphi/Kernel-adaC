@@ -1258,15 +1258,19 @@ static Type *builtin_call(Node *n, const char *name, Type *hint, bool *handled) 
             {"__poke8", BI_POKE8, 2, &TY_void_t}, {"__peek64", BI_PEEK64, 1, &TY_int_t},
             {"__poke64", BI_POKE64, 2, &TY_void_t}, {"__sp", BI_SP, 0, &TY_int_t},
             {"__gbegin", BI_GBEGIN, 0, &TY_int_t}, {"__gend", BI_GEND, 0, &TY_int_t},
-            {"__memcpy", BI_MEMCPY, 3, &TY_void_t}, {NULL, 0, 0, NULL}};
+            {"__memcpy", BI_MEMCPY, 3, &TY_void_t}, {"__call", BI_CALL, -1, &TY_int_t}, {NULL, 0, 0, NULL}};
         for (int i = 0; INTR[i].n; i++) {
             if (strcmp(INTR[i].n, name)) continue;
             if (INTR[i].args >= 0 && na != INTR[i].args) { arity_error(loc, "intrinsic", name, INTR[i].args, na); return TY_error_t; }
-            if (INTR[i].args < 0 && (na < 1 || na > 8 || arg(n, 0)->kind != N_INT)) {
+            if (INTR[i].bi == BI_WINAPI && (na < 1 || na > 8 || arg(n, 0)->kind != N_INT)) {
                 diag_error(loc, "__winapi requires the API index (literal) and up to 7 arguments");
                 return TY_error_t;
             }
-            for (int k = (INTR[i].args < 0 ? 1 : 0); k < na; k++) {
+            if (INTR[i].bi == BI_CALL && (na < 1 || na > 8)) {
+                diag_error(loc, "__call requires a function pointer and up to 7 arguments");
+                return TY_error_t;
+            }
+            for (int k = (INTR[i].bi == BI_WINAPI ? 1 : 0); k < na; k++) {
                 ex((Node **)&n->list.v[k], NULL);
                 Type *t = arg(n, k)->type;
                 if (!is_err(t) && t->kind == TY_FLOAT) diag_error(arg(n, k)->loc, "intrinsic '%s' does not accept float", name);

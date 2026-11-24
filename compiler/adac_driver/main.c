@@ -49,6 +49,7 @@ static void usage(void) {
         "  --dump-prelude    print the embedded runtime and exit (add --manual for manual-memory mode)\n"
         "  --manual          with --dump-prelude, show the #NOT_GARBAGE runtime\n"
         "  --color / --no-color\n"
+        "  -L <dir>          add a directory to the library search path for `import`\n"
         "  -v                show information about the compiler stages\n"
         "  -h, --help        show this help\n", VERSION);
 }
@@ -66,11 +67,27 @@ static char *default_output(const char *in) {
     return out;
 }
 
-/* ---------------- modules (import "file.adac";) ---------------- */
+/* ---------------- modules (import "file.adac"; / import mylib; / import std::pc;) ---------------- */
 typedef struct { Source *src; TokenList toks; } Module;
 static const char *stdin_name;   /* --stdin-name: the main program is read from standard input */
 static Vec modules;     /* Module*, dependencies before the importer */
 static Vec seen_paths;
+static Vec lib_paths;   /* -L <dir> */
+
+static bool file_exists(const char *p) {
+    FILE *f = fopen(p, "rb");
+    if (!f) return false;
+    fclose(f);
+    return true;
+}
+
+static char *norm_path(const char *p) {
+    char *s = xstrdup(p);
+    for (char *q = s; *q; q++) if (*q == '\\') *q = '/';
+    /* strip leading "./" */
+    while (s[0] == '.' && s[1] == '/') memmove(s, s + 2, strlen(s + 2) + 1);
+    return s;
+}
 
 static char *dir_of(const char *path) {
     const char *s1 = strrchr(path, '/'), *s2 = strrchr(path, '\\');
@@ -79,9 +96,49 @@ static char *dir_of(const char *path) {
     return xstrndup(path, (size_t)(sl - path + 1));
 }
 
+static char *resolve_local_import(const char *dir, const char *rel) {
+    bool abs = rel[0] == '/' || rel[0] == '\\' || (rel[0] && rel[1] == ':');
+    if (abs) return file_exists(rel) ? xstrdup(rel) : NULL;
+    const char *bases[64];
+    int nb = 0;
+    bases[nb++] = dir;
+    if (*dir) bases[nb++] = "";
+    bases[nb++] = xsprintf("%slibs/", dir);
+    bases[nb++] = xsprintf("%slib/", dir);
+    if (*dir) { bases[nb++] = "libs/"; bases[nb++] = "lib/"; }
+    for (int i = 0; i < lib_paths.n && nb < 60; i++) {
+        const char *lp = lib_paths.v[i];
+        size_t len = strlen(lp);
+        bases[nb++] = (len && (lp[len - 1] == '/' || lp[len - 1] == '\\')) ? lp : xsprintf("%s/", lp);
+    }
+    for (int i = 0; i < nb; i++) {
+        char *c1 = xsprintf("%s%s", bases[i], rel);
+        if (file_exists(c1)) return c1;
+        char *c2 = xsprintf("%s%s.adac", bases[i], rel);
+        if (file_exists(c2)) return c2;
+        char *c3 = xsprintf("%s%s/mod.adac", bases[i], rel);
+        if (file_exists(c3)) return c3;
+    }
+    return NULL;
+}
+
+static bool is_path_tok(const Token *t);
+static bool use_matches(const char *mod, const char *u);
+
+static bool is_embedded_lib(const char *u) {
+    for (const AdacLibModule *d = ADAC_LIBRARY; d->kind; d++) {
+        char *mod = xstrdup(d->path);
+        char *dot = strrchr(mod, '.');
+        if (dot) *dot = 0;
+        if (use_matches(mod, u)) return true;
+    }
+    return false;
+}
+
 static void load_module(const char *path) {
-    for (int i = 0; i < seen_paths.n; i++) if (!strcmp(seen_paths.v[i], path)) return;
-    vec_push(&seen_paths, xstrdup(path));
+    char *np = norm_path(path);
+    for (int i = 0; i < seen_paths.n; i++) if (!strcmp(seen_paths.v[i], np)) return;
+    vec_push(&seen_paths, np);
     Module *m = xcalloc(sizeof(Module));
     m->src = (stdin_name && !strcmp(path, stdin_name)) ? source_from_stdin(path) : source_from_file(path);
     if (!m->src) diag_fatal("could not open '%s'", path);
@@ -91,8 +148,26 @@ static void load_module(const char *path) {
         Token *t = &m->toks.t[i];
         if (t->kind == TK_IDENT && !strcmp(t->text, "import") && m->toks.t[i + 1].kind == TK_STRING) {
             const char *rel = m->toks.t[i + 1].text;
-            bool abs = rel[0] == '/' || rel[0] == '\\' || (rel[0] && rel[1] == ':');
-            load_module(abs ? rel : xsprintf("%s%s", dir, rel));
+            char *resolved = resolve_local_import(dir, rel);
+            load_module(resolved ? resolved : (rel[0] == '/' || rel[0] == '\\' || (rel[0] && rel[1] == ':') ? rel : xsprintf("%s%s", dir, rel)));
+        } else if (t->kind == TK_IDENT && !strcmp(t->text, "import") && is_path_tok(&m->toks.t[i + 1])) {
+            if (i > 0) {
+                TokKind pk = m->toks.t[i - 1].kind;
+                if (pk != P_SEMI && pk != P_RBRACE && pk != TK_DIRECTIVE) continue;
+            }
+            char *ipath = xstrdup("");
+            int j = i + 1;
+            while (j < m->toks.n && is_path_tok(&m->toks.t[j])) {
+                ipath = xsprintf("%s%s%s", ipath, *ipath ? "/" : "", m->toks.t[j].text);
+                j++;
+                if (j + 2 < m->toks.n && m->toks.t[j].kind == P_COLON && m->toks.t[j + 1].kind == P_COLON) j += 2;
+                else if (j + 1 < m->toks.n && m->toks.t[j].kind == P_DOT) j += 1;
+                else break;
+            }
+            if (!is_embedded_lib(ipath)) {
+                char *resolved = resolve_local_import(dir, ipath);
+                if (resolved) load_module(resolved);
+            }
         }
     }
     vec_push(&modules, m);
@@ -114,11 +189,13 @@ static void lex_lib(LibMod *lm) {
 /* path segments may be identifiers or keywords (e.g. `use std::char;`) */
 static bool is_path_tok(const Token *t) { return t->kind == TK_IDENT || (t->kind >= KW_IF && t->kind <= KW_PTR); }
 
-/* collects `use a::b::C;` declarations from a token list */
-static void scan_uses(TokenList *tl) {
+/* collects `use a::b::C;` and `import a::b::C;` (or `.` separated) declarations from a token list */
+static void scan_uses(TokenList *tl, const char *dir) {
     for (int i = 0; i + 1 < tl->n; i++) {
         Token *t = &tl->t[i];
-        if (t->kind != TK_IDENT || strcmp(t->text, "use") != 0 || !is_path_tok(&tl->t[i + 1])) continue;
+        bool is_use = t->kind == TK_IDENT && !strcmp(t->text, "use");
+        bool is_imp = t->kind == TK_IDENT && !strcmp(t->text, "import");
+        if ((!is_use && !is_imp) || !is_path_tok(&tl->t[i + 1])) continue;
         if (i > 0) {
             TokKind pk = tl->t[i - 1].kind;
             if (pk != P_SEMI && pk != P_RBRACE && pk != TK_DIRECTIVE) continue;
@@ -132,7 +209,14 @@ static void scan_uses(TokenList *tl) {
             if (j + 2 < tl->n && tl->t[j].kind == P_COLON && tl->t[j + 1].kind == P_COLON) {
                 j += 2;
                 if (tl->t[j].kind == P_STAR) { j++; break; }
+            } else if (j + 1 < tl->n && tl->t[j].kind == P_DOT) {
+                j += 1;
+                if (tl->t[j].kind == P_STAR) { j++; break; }
             } else break;
+        }
+        if (is_imp && !is_embedded_lib(path) && dir && resolve_local_import(dir, path)) {
+            i = j;
+            continue;
         }
         UseReq *u = xcalloc(sizeof(UseReq));
         u->path = path; u->pretty = pretty; u->loc = t->loc;
@@ -182,10 +266,13 @@ static void select_library(bool manual) {
         lm->selected = !strcmp(d->kind, "always") || !strcmp(d->kind, manual ? "manual" : "gc");
         vec_push(&libmods, lm);
     }
-    for (int i = 0; i < modules.n; i++) scan_uses(&((Module *)modules.v[i])->toks);
+    for (int i = 0; i < modules.n; i++) {
+        Module *m = modules.v[i];
+        scan_uses(&m->toks, dir_of(m->src->name));
+    }
     for (int i = 0; i < libmods.n; i++) {
         LibMod *lm = libmods.v[i];
-        if (lm->selected) { lex_lib(lm); scan_uses(&lm->toks); }
+        if (lm->selected) { lex_lib(lm); scan_uses(&lm->toks, NULL); }
     }
     for (bool changed = true; changed;) {                               /* fixpoint: selected modules may `use` others */
         changed = false;
@@ -201,7 +288,7 @@ static void select_library(bool manual) {
                 if (strcmp(lm->def->kind, "opt") == 0 && !lm->selected) {
                     lm->selected = true;
                     lex_lib(lm);
-                    scan_uses(&lm->toks);
+                    scan_uses(&lm->toks, NULL);
                     changed = true;
                 }
             }
@@ -244,6 +331,7 @@ int main(int argc, char **argv) {
         else if (!strcmp(a, "--manual")) manual_dump = true;
         else if (!strcmp(a, "--color")) color = true;
         else if (!strcmp(a, "--no-color")) color = false;
+        else if (!strcmp(a, "-L") || !strcmp(a, "--lib-path")) { if (++i >= argc) diag_fatal("option %s requires a directory", a); vec_push(&lib_paths, (void *)argv[i]); }
         else if (!strcmp(a, "-v")) verbose = true;
         else if (a[0] == '-') { fprintf(stderr, "adac: unknown option '%s'\n", a); usage(); return 2; }
         else if (!input) input = a;

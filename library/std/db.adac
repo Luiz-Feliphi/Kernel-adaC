@@ -1,0 +1,426 @@
+// std::db - Simple embedded persistent database (Key-Value + Relational Tables + SQL) & optional SQLite3 wrapper.
+use std::fs;
+use std::string_builder;
+
+class DbTable {
+    String name;
+    List<String> cols;
+    List<Map<String, String>> rows;
+
+    DbTable(String n, List<String> c) {
+        name = n;
+        cols = c;
+        rows = new List<Map<String, String>>();
+    }
+}
+
+class Database {
+    String path;
+    bool _autoSave;
+    Map<String, String> kv;
+    List<String> kvOrder;
+    Map<String, DbTable> _tables;
+    List<String> _tableNames;
+
+    Database(String filePath) {
+        path = filePath;
+        _autoSave = true;
+        kv = new Map<String, String>();
+        kvOrder = new List<String>();
+        _tables = new Map<String, DbTable>();
+        _tableNames = new List<String>();
+        load();
+    }
+
+    static Database open(String filePath) {
+        return new Database(filePath);
+    }
+
+    void autoSave(bool enabled) { _autoSave = enabled; }
+
+    private String _esc(String s) {
+        if (s == null) return "";
+        StringBuilder sb = new StringBuilder();
+        int n = s.length();
+        for (int i = 0; i < n; i++) {
+            char c = s[i];
+            if (c == '\\') sb.append("\\\\");
+            else if (c == '\n') sb.append("\\n");
+            else if (c == '\r') sb.append("\\r");
+            else if (c == '\t') sb.append("\\t");
+            else sb.appendChar(c);
+        }
+        return sb.toString();
+    }
+
+    private String _unesc(String s) {
+        if (s == null) return "";
+        StringBuilder sb = new StringBuilder();
+        int n = s.length();
+        for (int i = 0; i < n; i++) {
+            char c = s[i];
+            if (c == '\\' && i + 1 < n) {
+                char nx = s[i + 1];
+                if (nx == 'n') { sb.appendChar('\n'); i++; continue; }
+                if (nx == 'r') { sb.appendChar('\r'); i++; continue; }
+                if (nx == 't') { sb.appendChar('\t'); i++; continue; }
+                if (nx == '\\') { sb.appendChar('\\'); i++; continue; }
+            }
+            sb.appendChar(c);
+        }
+        return sb.toString();
+    }
+
+    private List<String> _splitTab(String line) {
+        List<String> parts = new List<String>();
+        StringBuilder cur = new StringBuilder();
+        int n = line.length();
+        for (int i = 0; i < n; i++) {
+            char c = line[i];
+            if (c == '\t') { parts.add(cur.toString()); cur.clear(); }
+            else cur.appendChar(c);
+        }
+        parts.add(cur.toString());
+        return parts;
+    }
+
+    private List<String> _splitCsv(String csv) {
+        List<String> out = new List<String>();
+        if (csv == null || csv.length() == 0) return out;
+        String[] raw = csv.split(",");
+        for (int i = 0; i < raw.length; i++) {
+            String item = raw[i].trim();
+            if (item.length() >= 2 && ((item[0] == '\'' && item[item.length() - 1] == '\'') || (item[0] == '"' && item[item.length() - 1] == '"'))) {
+                item = item.substring(1, item.length() - 1);
+            }
+            out.add(item);
+        }
+        return out;
+    }
+
+    bool save() {
+        if (path == null || path.length() == 0) return false;
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < kvOrder.size(); i++) {
+            String k = kvOrder[i];
+            if (kv.has(k)) {
+                sb.append("KV\t");
+                sb.append(_esc(k));
+                sb.append("\t");
+                sb.append(_esc(kv.get(k)));
+                sb.append("\n");
+            }
+        }
+        for (int t = 0; t < _tableNames.size(); t++) {
+            String tname = _tableNames[t];
+            if (!_tables.has(tname)) continue;
+            DbTable tbl = _tables.get(tname);
+            sb.append("TBL\t");
+            sb.append(_esc(tname));
+            for (int c = 0; c < tbl.cols.size(); c++) {
+                sb.append("\t");
+                sb.append(_esc(tbl.cols[c]));
+            }
+            sb.append("\n");
+            for (int r = 0; r < tbl.rows.size(); r++) {
+                Map<String, String> row = tbl.rows[r];
+                sb.append("ROW\t");
+                sb.append(_esc(tname));
+                for (int c = 0; c < tbl.cols.size(); c++) {
+                    sb.append("\t");
+                    String col = tbl.cols[c];
+                    sb.append(_esc(row.has(col) ? row.get(col) : ""));
+                }
+                sb.append("\n");
+            }
+        }
+        return Fs.writeString(path, sb.toString());
+    }
+
+    bool commit() { return save(); }
+
+    void load() {
+        if (path == null || !Fs.exists(path)) return;
+        String content = Fs.readToString(path);
+        if (content == null || content.length() == 0) return;
+        String[] lines = content.split("\n");
+        for (int i = 0; i < lines.length; i++) {
+            String line = lines[i];
+            if (line.length() > 0 && line[line.length() - 1] == '\r') line = line.substring(0, line.length() - 1);
+            if (line.length() == 0) continue;
+            List<String> p = _splitTab(line);
+            if (p.size() < 3) continue;
+            String kind = p[0];
+            if (kind.equals("KV")) {
+                String k = _unesc(p[1]);
+                String v = _unesc(p[2]);
+                if (!kv.has(k)) kvOrder.add(k);
+                kv.put(k, v);
+            } else if (kind.equals("TBL")) {
+                String tname = _unesc(p[1]);
+                List<String> cols = new List<String>();
+                for (int c = 2; c < p.size(); c++) cols.add(_unesc(p[c]));
+                if (!_tables.has(tname)) _tableNames.add(tname);
+                _tables.put(tname, new DbTable(tname, cols));
+            } else if (kind.equals("ROW")) {
+                String tname = _unesc(p[1]);
+                if (!_tables.has(tname)) continue;
+                DbTable tbl = _tables.get(tname);
+                Map<String, String> row = new Map<String, String>();
+                for (int c = 0; c < tbl.cols.size(); c++) {
+                    String val = (c + 2 < p.size()) ? _unesc(p[c + 2]) : "";
+                    row.put(tbl.cols[c], val);
+                }
+                tbl.rows.add(row);
+            }
+        }
+    }
+
+    // ---- Key-Value API ----
+    void set(String key, String value) {
+        if (!kv.has(key)) kvOrder.add(key);
+        kv.put(key, value);
+        if (_autoSave) save();
+    }
+
+    String get(String key) {
+        if (!kv.has(key)) return null;
+        return kv.get(key);
+    }
+
+    bool has(String key) { return kv.has(key); }
+
+    bool del(String key) {
+        if (!kv.has(key)) return false;
+        kv.remove(key);
+        if (_autoSave) save();
+        return true;
+    }
+
+    List<String> keys() {
+        List<String> out = new List<String>();
+        for (int i = 0; i < kvOrder.size(); i++) {
+            if (kv.has(kvOrder[i])) out.add(kvOrder[i]);
+        }
+        return out;
+    }
+
+    // ---- Table API ----
+    void createTable(String name, String columnsCsv) {
+        if (_tables.has(name)) return;
+        List<String> cols = _splitCsv(columnsCsv);
+        _tableNames.add(name);
+        _tables.put(name, new DbTable(name, cols));
+        if (_autoSave) save();
+    }
+
+    List<String> tables() { return _tableNames; }
+
+    bool insert(String table, String valuesCsv) {
+        if (!_tables.has(table)) return false;
+        DbTable tbl = _tables.get(table);
+        List<String> vals = _splitCsv(valuesCsv);
+        Map<String, String> row = new Map<String, String>();
+        for (int i = 0; i < tbl.cols.size(); i++) {
+            row.put(tbl.cols[i], i < vals.size() ? vals[i] : "");
+        }
+        tbl.rows.add(row);
+        if (_autoSave) save();
+        return true;
+    }
+
+    bool insertRow(String table, Map<String, String> row) {
+        if (!_tables.has(table)) return false;
+        DbTable tbl = _tables.get(table);
+        Map<String, String> copy = new Map<String, String>();
+        for (int i = 0; i < tbl.cols.size(); i++) {
+            String c = tbl.cols[i];
+            copy.put(c, row.has(c) ? row.get(c) : "");
+        }
+        tbl.rows.add(copy);
+        if (_autoSave) save();
+        return true;
+    }
+
+    List<Map<String, String>> selectAll(String table) {
+        List<Map<String, String>> out = new List<Map<String, String>>();
+        if (!_tables.has(table)) return out;
+        DbTable tbl = _tables.get(table);
+        for (int i = 0; i < tbl.rows.size(); i++) out.add(tbl.rows[i]);
+        return out;
+    }
+
+    List<Map<String, String>> where(String table, String col, String val) {
+        List<Map<String, String>> out = new List<Map<String, String>>();
+        if (!_tables.has(table)) return out;
+        DbTable tbl = _tables.get(table);
+        for (int i = 0; i < tbl.rows.size(); i++) {
+            Map<String, String> r = tbl.rows[i];
+            if (r.has(col) && r.get(col).equals(val)) out.add(r);
+        }
+        return out;
+    }
+
+    int updateWhere(String table, String matchCol, String matchVal, String setCol, String setVal) {
+        if (!_tables.has(table)) return 0;
+        DbTable tbl = _tables.get(table);
+        int count = 0;
+        for (int i = 0; i < tbl.rows.size(); i++) {
+            Map<String, String> r = tbl.rows[i];
+            if (r.has(matchCol) && r.get(matchCol).equals(matchVal)) {
+                r.put(setCol, setVal);
+                count++;
+            }
+        }
+        if (count > 0 && _autoSave) save();
+        return count;
+    }
+
+    int deleteWhere(String table, String col, String val) {
+        if (!_tables.has(table)) return 0;
+        DbTable tbl = _tables.get(table);
+        List<Map<String, String>> kept = new List<Map<String, String>>();
+        int removed = 0;
+        for (int i = 0; i < tbl.rows.size(); i++) {
+            Map<String, String> r = tbl.rows[i];
+            if (r.has(col) && r.get(col).equals(val)) removed++;
+            else kept.add(r);
+        }
+        tbl.rows = kept;
+        if (removed > 0 && _autoSave) save();
+        return removed;
+    }
+
+    int count(String table) {
+        if (!_tables.has(table)) return 0;
+        return _tables.get(table).rows.size();
+    }
+
+    private String _unquote(String s) {
+        String t = s.trim();
+        if (t.length() >= 2 && ((t[0] == '\'' && t[t.length() - 1] == '\'') || (t[0] == '"' && t[t.length() - 1] == '"'))) {
+            return t.substring(1, t.length() - 1);
+        }
+        return t;
+    }
+
+    // Simple SQL executor: CREATE TABLE, INSERT INTO, UPDATE ... SET ... WHERE, DELETE FROM ... WHERE
+    bool exec(String sql) {
+        if (sql == null) return false;
+        String s = sql.trim();
+        String up = s.toUpperCase();
+        if (up.startsWith("CREATE TABLE ")) {
+            String rest = s.substring(13, s.length()).trim();
+            int lp = rest.indexOf("(");
+            int rp = rest.indexOf(")");
+            if (lp < 0 || rp <= lp) return false;
+            String tname = rest.substring(0, lp).trim();
+            String cols = rest.substring(lp + 1, rp);
+            createTable(tname, cols);
+            return true;
+        }
+        if (up.startsWith("INSERT INTO ")) {
+            String rest = s.substring(12, s.length()).trim();
+            int vpos = rest.toUpperCase().indexOf("VALUES");
+            if (vpos < 0) return false;
+            String tname = rest.substring(0, vpos).trim();
+            String vpart = rest.substring(vpos + 6, rest.length()).trim();
+            int lp = vpart.indexOf("(");
+            int rp = vpart.indexOf(")");
+            if (lp < 0 || rp <= lp) return false;
+            return insert(tname, vpart.substring(lp + 1, rp));
+        }
+        if (up.startsWith("DELETE FROM ")) {
+            String rest = s.substring(12, s.length()).trim();
+            int wpos = rest.toUpperCase().indexOf(" WHERE ");
+            if (wpos < 0) {
+                if (_tables.has(rest)) { _tables.get(rest).rows = new List<Map<String, String>>(); if (_autoSave) save(); return true; }
+                return false;
+            }
+            String tname = rest.substring(0, wpos).trim();
+            String cond = rest.substring(wpos + 7, rest.length()).trim();
+            int eq = cond.indexOf("=");
+            if (eq < 0) return false;
+            deleteWhere(tname, cond.substring(0, eq).trim(), _unquote(cond.substring(eq + 1, cond.length())));
+            return true;
+        }
+        if (up.startsWith("UPDATE ")) {
+            String rest = s.substring(7, s.length()).trim();
+            int spos = rest.toUpperCase().indexOf(" SET ");
+            int wpos = rest.toUpperCase().indexOf(" WHERE ");
+            if (spos < 0 || wpos < spos) return false;
+            String tname = rest.substring(0, spos).trim();
+            String setPart = rest.substring(spos + 5, wpos).trim();
+            String wherePart = rest.substring(wpos + 7, rest.length()).trim();
+            int eq1 = setPart.indexOf("=");
+            int eq2 = wherePart.indexOf("=");
+            if (eq1 < 0 || eq2 < 0) return false;
+            updateWhere(tname, wherePart.substring(0, eq2).trim(), _unquote(wherePart.substring(eq2 + 1, wherePart.length())),
+                        setPart.substring(0, eq1).trim(), _unquote(setPart.substring(eq1 + 1, setPart.length())));
+            return true;
+        }
+        return false;
+    }
+
+    List<Map<String, String>> query(String sql) {
+        List<Map<String, String>> empty = new List<Map<String, String>>();
+        if (sql == null) return empty;
+        String s = sql.trim();
+        String up = s.toUpperCase();
+        if (!up.startsWith("SELECT ")) return empty;
+        int fpos = up.indexOf(" FROM ");
+        if (fpos < 0) return empty;
+        String rest = s.substring(fpos + 6, s.length()).trim();
+        int wpos = rest.toUpperCase().indexOf(" WHERE ");
+        if (wpos < 0) return selectAll(rest.trim());
+        String tname = rest.substring(0, wpos).trim();
+        String cond = rest.substring(wpos + 7, rest.length()).trim();
+        int eq = cond.indexOf("=");
+        if (eq < 0) return selectAll(tname);
+        return where(tname, cond.substring(0, eq).trim(), _unquote(cond.substring(eq + 1, cond.length())));
+    }
+
+    void close() { save(); }
+}
+
+class Db {
+    static Database open(String path) { return new Database(path); }
+}
+
+// Optional native SQLite3 driver (requires sqlite3.dll in PATH or next to the .exe)
+class Sqlite {
+    static int _dll = 0;
+    int handle;
+
+    Sqlite(int h) { handle = h; }
+
+    static bool isAvailable() {
+        if (_dll == 0) _dll = __winapi(14, (int) "sqlite3.dll");
+        return _dll != 0;
+    }
+
+    static Sqlite open(String path) {
+        if (!isAvailable()) return null;
+        int fOpen = __winapi(15, _dll, (int) "sqlite3_open");
+        if (fOpen == 0) return null;
+        int outPtr = __alloc_atomic(8);
+        int rc = __call(fOpen, (int) path, outPtr) & 0xFFFFFFFF;
+        if (rc != 0) return null;
+        return new Sqlite(__peek64(outPtr));
+    }
+
+    bool exec(String sql) {
+        if (handle == 0 || !isAvailable()) return false;
+        int fExec = __winapi(15, _dll, (int) "sqlite3_exec");
+        if (fExec == 0) return false;
+        int rc = __call(fExec, handle, (int) sql, 0, 0, 0) & 0xFFFFFFFF;
+        return rc == 0;
+    }
+
+    void close() {
+        if (handle == 0 || !isAvailable()) return;
+        int fClose = __winapi(15, _dll, (int) "sqlite3_close");
+        if (fClose != 0) __call(fClose, handle);
+        handle = 0;
+    }
+}

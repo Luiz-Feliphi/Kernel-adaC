@@ -38,3 +38,6 @@ opt     alloc/collections/queue.adac
 opt     alloc/collections/set.adac
 opt     std/time.adac
 opt     std/fs.adac
+opt     std/pc.adac
+opt     std/db.adac
+opt     std/web.adac

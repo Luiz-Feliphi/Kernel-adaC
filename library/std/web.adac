@@ -1,0 +1,417 @@
+// std::web - Backend HTTP/1.1 Web Server, Routing, JSON & HTTP Client (Winsock2 / ws2_32.dll).
+use std::fs;
+use std::string_builder;
+
+class Json {
+    static String escape(String s) {
+        if (s == null) return "";
+        StringBuilder sb = new StringBuilder();
+        int n = s.length();
+        for (int i = 0; i < n; i++) {
+            char c = s[i];
+            if (c == '"') sb.append("\\\"");
+            else if (c == '\\') sb.append("\\\\");
+            else if (c == '\n') sb.append("\\n");
+            else if (c == '\r') sb.append("\\r");
+            else if (c == '\t') sb.append("\\t");
+            else sb.appendChar(c);
+        }
+        return sb.toString();
+    }
+
+    static String str(String s) { return "\"" + escape(s) + "\""; }
+
+    static String obj(String k1, String v1) {
+        return "{\"" + escape(k1) + "\": \"" + escape(v1) + "\"}";
+    }
+
+    static String fromMap(Map<String, String> m) {
+        if (m == null) return "{}";
+        StringBuilder sb = new StringBuilder();
+        sb.append("{");
+        String[] ks = m.keys();
+        for (int i = 0; i < ks.length; i++) {
+            if (i > 0) sb.append(", ");
+            sb.append("\"");
+            sb.append(escape(ks[i]));
+            sb.append("\": \"");
+            sb.append(escape(m.get(ks[i])));
+            sb.append("\"");
+        }
+        sb.append("}");
+        return sb.toString();
+    }
+
+    static String fromList(List<Map<String, String>> rows) {
+        if (rows == null) return "[]";
+        StringBuilder sb = new StringBuilder();
+        sb.append("[");
+        for (int i = 0; i < rows.size(); i++) {
+            if (i > 0) sb.append(", ");
+            sb.append(fromMap(rows[i]));
+        }
+        sb.append("]");
+        return sb.toString();
+    }
+
+    // Parses a flat JSON object {"key": "value", "num": 123, "flag": true} into Map<String, String>.
+    static Map<String, String> parse(String json) {
+        Map<String, String> out = new Map<String, String>();
+        if (json == null) return out;
+        int n = json.length();
+        int i = 0;
+        while (i < n && json[i] != '{') i++;
+        if (i >= n) return out;
+        i++;
+        while (i < n) {
+            while (i < n && (json[i] == ' ' || json[i] == '\t' || json[i] == '\n' || json[i] == '\r' || json[i] == ',')) i++;
+            if (i >= n || json[i] == '}') break;
+            if (json[i] != '"') { i++; continue; }
+            i++;
+            StringBuilder kb = new StringBuilder();
+            while (i < n && json[i] != '"') {
+                if (json[i] == '\\' && i + 1 < n) { i++; kb.appendChar(json[i]); }
+                else kb.appendChar(json[i]);
+                i++;
+            }
+            if (i < n) i++;
+            while (i < n && json[i] != ':') i++;
+            if (i < n) i++;
+            while (i < n && (json[i] == ' ' || json[i] == '\t' || json[i] == '\n' || json[i] == '\r')) i++;
+            StringBuilder vb = new StringBuilder();
+            if (i < n && json[i] == '"') {
+                i++;
+                while (i < n && json[i] != '"') {
+                    if (json[i] == '\\' && i + 1 < n) {
+                        i++;
+                        if (json[i] == 'n') vb.appendChar('\n');
+                        else if (json[i] == 't') vb.appendChar('\t');
+                        else vb.appendChar(json[i]);
+                    } else vb.appendChar(json[i]);
+                    i++;
+                }
+                if (i < n) i++;
+            } else {
+                while (i < n && json[i] != ',' && json[i] != '}' && json[i] != ' ' && json[i] != '\n' && json[i] != '\r') {
+                    vb.appendChar(json[i]);
+                    i++;
+                }
+            }
+            out.put(kb.toString(), vb.toString());
+        }
+        return out;
+    }
+}
+
+class HttpRequest {
+    String method;
+    String path;
+    String rawUrl;
+    String body;
+    Map<String, String> headers;
+    Map<String, String> queries;
+
+    HttpRequest() {
+        method = "GET";
+        path = "/";
+        rawUrl = "/";
+        body = "";
+        headers = new Map<String, String>();
+        queries = new Map<String, String>();
+    }
+
+    bool is(String m, String p) {
+        return method.equals(m) && path.equals(p);
+    }
+
+    bool startsWith(String m, String prefix) {
+        return method.equals(m) && path.startsWith(prefix);
+    }
+
+    String param(String prefix) {
+        if (!path.startsWith(prefix)) return "";
+        return path.substring(prefix.length(), path.length());
+    }
+
+    String query(String key) {
+        if (!queries.has(key)) return "";
+        return queries.get(key);
+    }
+
+    String header(String name) {
+        String low = name.toLowerCase();
+        if (!headers.has(low)) return "";
+        return headers.get(low);
+    }
+}
+
+class WebApp {
+    int _ws;
+    int _srv;
+    int _cli;
+    int _status;
+    Map<String, String> _resHeaders;
+    HttpRequest _req;
+    bool _replied;
+
+    WebApp(int ws, int srv) {
+        _ws = ws;
+        _srv = srv;
+        _cli = -1;
+        _status = 200;
+        _resHeaders = new Map<String, String>();
+        _req = new HttpRequest();
+        _replied = false;
+    }
+
+    private int _fn(String name) { return __winapi(15, _ws, (int) name); }
+
+    private void _poke16(int a, int v) { __poke8(a, v & 255); __poke8(a + 1, (v >> 8) & 255); }
+    private void _poke32(int a, int v) {
+        __poke8(a, v & 255); __poke8(a + 1, (v >> 8) & 255);
+        __poke8(a + 2, (v >> 16) & 255); __poke8(a + 3, (v >> 24) & 255);
+    }
+
+    private void _parseUrl(String raw, HttpRequest r) {
+        r.rawUrl = raw;
+        int q = raw.indexOf("?");
+        if (q < 0) { r.path = raw; return; }
+        r.path = raw.substring(0, q);
+        String qs = raw.substring(q + 1, raw.length());
+        String[] pairs = qs.split("&");
+        for (int i = 0; i < pairs.length; i++) {
+            String p = pairs[i];
+            int eq = p.indexOf("=");
+            if (eq > 0) r.queries.put(p.substring(0, eq), p.substring(eq + 1, p.length()));
+        }
+    }
+
+    private void _parseRequest(String raw, HttpRequest r) {
+        int hdrEnd = raw.indexOf("\r\n\r\n");
+        int bodyStart = hdrEnd >= 0 ? hdrEnd + 4 : raw.length();
+        String head = hdrEnd >= 0 ? raw.substring(0, hdrEnd) : raw;
+        r.body = bodyStart < raw.length() ? raw.substring(bodyStart, raw.length()) : "";
+        String[] lines = head.split("\n");
+        if (lines.length > 0) {
+            String fl = lines[0].trim();
+            String[] parts = fl.split(" ");
+            if (parts.length >= 1) r.method = parts[0].trim().toUpperCase();
+            if (parts.length >= 2) _parseUrl(parts[1].trim(), r);
+        }
+        for (int i = 1; i < lines.length; i++) {
+            String ln = lines[i].trim();
+            int col = ln.indexOf(":");
+            if (col > 0) {
+                String k = ln.substring(0, col).trim().toLowerCase();
+                String v = ln.substring(col + 1, ln.length()).trim();
+                r.headers.put(k, v);
+            }
+        }
+    }
+
+    // Waits for the next incoming HTTP request; returns false only if server is closed.
+    bool next() {
+        int fClose = _fn("closesocket");
+        if (_cli != -1 && fClose != 0) {
+            if (!_replied) text("");
+            __call(fClose, _cli);
+            _cli = -1;
+        }
+        if (_srv == -1) return false;
+        int fAccept = _fn("accept");
+        int fRecv = _fn("recv");
+        if (fAccept == 0 || fRecv == 0) return false;
+        int cli = __call(fAccept, _srv, 0, 0);
+        if (cli == -1) return false;
+        _cli = cli;
+        _status = 200;
+        _resHeaders = new Map<String, String>();
+        _replied = false;
+        _req = new HttpRequest();
+
+        int buf = __alloc_atomic(16384);
+        int n = __call(fRecv, cli, buf, 16383, 0);
+        if (n <= 0) {
+            __call(fClose, cli);
+            _cli = -1;
+            return next();
+        }
+        String raw = __str_from(buf, n);
+        _parseRequest(raw, _req);
+        return true;
+    }
+
+    HttpRequest req() { return _req; }
+
+    WebApp status(int code) { _status = code; return this; }
+    WebApp header(String k, String v) { _resHeaders.put(k, v); return this; }
+
+    private String _statusText(int c) {
+        if (c == 200) return "OK";
+        if (c == 201) return "Created";
+        if (c == 204) return "No Content";
+        if (c == 302) return "Found";
+        if (c == 400) return "Bad Request";
+        if (c == 401) return "Unauthorized";
+        if (c == 403) return "Forbidden";
+        if (c == 404) return "Not Found";
+        if (c == 500) return "Internal Server Error";
+        return "OK";
+    }
+
+    void send(String contentType, String body) {
+        if (_cli == -1 || _replied) return;
+        if (body == null) body = "";
+        int fSend = _fn("send");
+        if (fSend == 0) return;
+        StringBuilder sb = new StringBuilder();
+        sb.append("HTTP/1.1 ");
+        sb.appendInt(_status);
+        sb.append(" ");
+        sb.append(_statusText(_status));
+        sb.append("\r\nContent-Type: ");
+        sb.append(contentType);
+        sb.append("\r\nContent-Length: ");
+        sb.appendInt(__strlen(body));
+        sb.append("\r\nConnection: close\r\n");
+        String[] ks = _resHeaders.keys();
+        for (int i = 0; i < ks.length; i++) {
+            sb.append(ks[i]);
+            sb.append(": ");
+            sb.append(_resHeaders.get(ks[i]));
+            sb.append("\r\n");
+        }
+        sb.append("\r\n");
+        sb.append(body);
+        String resp = sb.toString();
+        __call(fSend, _cli, (int) resp, __strlen(resp), 0);
+        _replied = true;
+    }
+
+    void text(String body) { send("text/plain; charset=utf-8", body); }
+    void html(String body) { send("text/html; charset=utf-8", body); }
+    void json(String body) { send("application/json; charset=utf-8", body); }
+
+    void redirect(String url) {
+        status(302);
+        header("Location", url);
+        text("");
+    }
+
+    void sendFile(String filePath) {
+        if (!Fs.exists(filePath)) { status(404).text("Not Found"); return; }
+        String data = Fs.readToString(filePath);
+        if (data == null) { status(500).text("Error reading file"); return; }
+        String ct = "application/octet-stream";
+        if (filePath.endsWith(".html") || filePath.endsWith(".htm")) ct = "text/html; charset=utf-8";
+        else if (filePath.endsWith(".css")) ct = "text/css; charset=utf-8";
+        else if (filePath.endsWith(".js")) ct = "application/javascript; charset=utf-8";
+        else if (filePath.endsWith(".json")) ct = "application/json; charset=utf-8";
+        else if (filePath.endsWith(".txt")) ct = "text/plain; charset=utf-8";
+        send(ct, data);
+    }
+
+    void close() {
+        int fClose = _fn("closesocket");
+        if (_cli != -1 && fClose != 0) { __call(fClose, _cli); _cli = -1; }
+        if (_srv != -1 && fClose != 0) { __call(fClose, _srv); _srv = -1; }
+    }
+}
+
+class Web {
+    static int _ws = 0;
+    static bool _inited = false;
+
+    static int _init() {
+        if (_ws == 0) _ws = __winapi(14, (int) "ws2_32.dll");
+        if (_ws == 0) return 0;
+        if (!_inited) {
+            int fStart = __winapi(15, _ws, (int) "WSAStartup");
+            if (fStart != 0) {
+                int wsa = __alloc_atomic(512);
+                __call(fStart, 0x0202, wsa);
+            }
+            _inited = true;
+        }
+        return _ws;
+    }
+
+    static void _poke16(int a, int v) { __poke8(a, v & 255); __poke8(a + 1, (v >> 8) & 255); }
+    static void _poke32(int a, int v) {
+        __poke8(a, v & 255); __poke8(a + 1, (v >> 8) & 255);
+        __poke8(a + 2, (v >> 16) & 255); __poke8(a + 3, (v >> 24) & 255);
+    }
+
+    static WebApp listen(int port) {
+        int ws = _init();
+        if (ws == 0) return null;
+        int fSock = __winapi(15, ws, (int) "socket");
+        int fSetOpt = __winapi(15, ws, (int) "setsockopt");
+        int fBind = __winapi(15, ws, (int) "bind");
+        int fListen = __winapi(15, ws, (int) "listen");
+        int fHtons = __winapi(15, ws, (int) "htons");
+        int fClose = __winapi(15, ws, (int) "closesocket");
+        if (fSock == 0 || fBind == 0 || fListen == 0) return null;
+
+        int srv = __call(fSock, 2, 1, 6); // AF_INET=2, SOCK_STREAM=1, IPPROTO_TCP=6
+        if (srv == -1) return null;
+
+        if (fSetOpt != 0) {
+            int opt = __alloc_atomic(4);
+            _poke32(opt, 1);
+            __call(fSetOpt, srv, 0xFFFF, 4, opt, 4); // SOL_SOCKET, SO_REUSEADDR
+        }
+
+        int addr = __alloc_atomic(16);
+        _poke16(addr, 2); // AF_INET
+        int netPort = __call(fHtons, port) & 0xFFFF;
+        _poke16(addr + 2, netPort);
+        _poke32(addr + 4, 0); // INADDR_ANY
+
+        if ((__call(fBind, srv, addr, 16) & 0xFFFFFFFF) != 0) {
+            __call(fClose, srv);
+            return null;
+        }
+        if ((__call(fListen, srv, 64) & 0xFFFFFFFF) != 0) {
+            __call(fClose, srv);
+            return null;
+        }
+        return new WebApp(ws, srv);
+    }
+
+    // Simple HTTP GET client: Web.get("127.0.0.1", 8080, "/api/ping")
+    static String get(String ip, int port, String path) {
+        int ws = _init();
+        if (ws == 0) return "";
+        int fSock = __winapi(15, ws, (int) "socket");
+        int fConn = __winapi(15, ws, (int) "connect");
+        int fSend = __winapi(15, ws, (int) "send");
+        int fRecv = __winapi(15, ws, (int) "recv");
+        int fClose = __winapi(15, ws, (int) "closesocket");
+        int fHtons = __winapi(15, ws, (int) "htons");
+        int fInet = __winapi(15, ws, (int) "inet_addr");
+        if (fSock == 0 || fConn == 0 || fSend == 0 || fRecv == 0) return "";
+
+        int s = __call(fSock, 2, 1, 6);
+        if (s == -1) return "";
+        int addr = __alloc_atomic(16);
+        _poke16(addr, 2);
+        _poke16(addr + 2, __call(fHtons, port) & 0xFFFF);
+        _poke32(addr + 4, __call(fInet, (int) ip));
+        if ((__call(fConn, s, addr, 16) & 0xFFFFFFFF) != 0) {
+            __call(fClose, s);
+            return "";
+        }
+        String req = "GET " + path + " HTTP/1.1\r\nHost: " + ip + "\r\nConnection: close\r\n\r\n";
+        __call(fSend, s, (int) req, __strlen(req), 0);
+        StringBuilder sb = new StringBuilder();
+        int buf = __alloc_atomic(4096);
+        while (true) {
+            int n = __call(fRecv, s, buf, 4096, 0);
+            if (n <= 0) break;
+            sb.append(__str_from(buf, n));
+        }
+        __call(fClose, s);
+        return sb.toString();
+    }
+}

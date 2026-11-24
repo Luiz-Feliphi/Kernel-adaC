@@ -899,11 +899,12 @@ Vec parse_program(TokenList *tl) {
                 adv();
                 expect(P_SEMI, "at the end of the import");
                 vec_push(&items, d);
-            } else if (K() == TK_IDENT && !strcmp(cur()->text, "use") && peekn(1)->kind == TK_IDENT) {
-                Node *d = mk(N_DIRECTIVE, LOC());           /* use std::collections::Stack;  (resolved by the driver) */
-                d->name = "use";
+            } else if (K() == TK_IDENT && (!strcmp(cur()->text, "use") || !strcmp(cur()->text, "import")) &&
+                       (peekn(1)->kind == TK_IDENT || (peekn(1)->kind >= KW_IF && peekn(1)->kind <= KW_PTR))) {
+                Node *d = mk(N_DIRECTIVE, LOC());           /* use/import std::pc; or import mylib; */
+                d->name = cur()->text;
                 while (K() != P_SEMI && K() != TK_EOF) adv();
-                expect(P_SEMI, "at the end of the use declaration");
+                expect(P_SEMI, "at the end of the import/use declaration");
                 vec_push(&items, d);
             } else if (K() == TK_DIRECTIVE) {
                 vec_push(&items, parse_directive());

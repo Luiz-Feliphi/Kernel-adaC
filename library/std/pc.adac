@@ -1,0 +1,333 @@
+// std::pc - Simple, fast PC & OS control (processes, filesystem, env, system info, UI, clipboard).
+
+class Pc {
+    static int _k32 = 0;
+    static int _u32 = 0;
+    static int _s32 = 0;
+    static int _a32 = 0;
+
+    static int _mod(int which) {
+        if (which == 0) { if (_k32 == 0) _k32 = __winapi(14, (int) "kernel32.dll"); return _k32; }
+        if (which == 1) { if (_u32 == 0) _u32 = __winapi(14, (int) "user32.dll"); return _u32; }
+        if (which == 2) { if (_s32 == 0) _s32 = __winapi(14, (int) "shell32.dll"); return _s32; }
+        if (_a32 == 0) _a32 = __winapi(14, (int) "advapi32.dll");
+        return _a32;
+    }
+
+    static int _fn(int which, String name) {
+        int m = _mod(which);
+        if (m == 0) return 0;
+        return __winapi(15, m, (int) name);
+    }
+
+    static void _poke32(int addr, int v) {
+        __poke8(addr, v & 255);
+        __poke8(addr + 1, (v >> 8) & 255);
+        __poke8(addr + 2, (v >> 16) & 255);
+        __poke8(addr + 3, (v >> 24) & 255);
+    }
+
+    static int _peek32(int addr) {
+        return __peek8(addr) | (__peek8(addr + 1) << 8) | (__peek8(addr + 2) << 16) | (__peek8(addr + 3) << 24);
+    }
+
+    static int _peek32s(int addr) {
+        int v = _peek32(addr);
+        if ((v & 0x80000000) != 0) return v | (-1 << 32);
+        return v;
+    }
+
+    // ---- Time & Process ----
+    static void sleep(int millis) { __winapi(9, millis); }
+    static void exit(int code) { __winapi(0, code); }
+    static int uptimeMs() { return __winapi(8); }
+
+    static bool beep(int freqHz, int durationMs) {
+        int f = _fn(0, "Beep");
+        if (f == 0) return false;
+        return __call(f, freqHz, durationMs) != 0;
+    }
+
+    // Runs a shell command and returns the exit code (-1 on failure).
+    static int run(String cmd) {
+        int msvcrt = __winapi(14, (int) "msvcrt.dll");
+        if (msvcrt == 0) return -1;
+        int fSys = __winapi(15, msvcrt, (int) "system");
+        if (fSys == 0) return -1;
+        return __call(fSys, (int) cmd);
+    }
+
+    // Runs a shell command and captures its stdout/stderr into a String.
+    static String exec(String cmd) {
+        int msvcrt = __winapi(14, (int) "msvcrt.dll");
+        if (msvcrt == 0) return "";
+        int fPopen = __winapi(15, msvcrt, (int) "_popen");
+        int fPclose = __winapi(15, msvcrt, (int) "_pclose");
+        int fRead = __winapi(15, msvcrt, (int) "fread");
+        if (fPopen == 0 || fPclose == 0 || fRead == 0) return "";
+        int pipe = __call(fPopen, (int) cmd, (int) "rb");
+        if (pipe == 0) return "";
+        int cap = 4096;
+        int buf = __alloc_atomic(cap + 1);
+        int total = 0;
+        int tmp = __alloc_atomic(1024);
+        while (true) {
+            int got = __call(fRead, tmp, 1, 1024, pipe);
+            if (got <= 0) break;
+            if (total + got > cap) {
+                int ncap = cap * 2 + got;
+                int nbuf = __alloc_atomic(ncap + 1);
+                __memcpy(nbuf, buf, total);
+                buf = nbuf;
+                cap = ncap;
+            }
+            __memcpy(buf + total, tmp, got);
+            total = total + got;
+        }
+        __call(fPclose, pipe);
+        return __str_from(buf, total);
+    }
+
+    // Opens a file, folder, or URL using the default Windows application.
+    static bool open(String target) {
+        int f = _fn(2, "ShellExecuteA");
+        if (f == 0) return false;
+        int res = __call(f, 0, (int) "open", (int) target, 0, 0, 1);
+        return res > 32;
+    }
+
+    // ---- Environment & Directories & Files ----
+    static String env(String name) {
+        int f = _fn(0, "GetEnvironmentVariableA");
+        if (f == 0) return "";
+        int buf = __alloc_atomic(4096);
+        int n = __call(f, (int) name, buf, 4096) & 0xFFFFFFFF;
+        if (n == 0) return "";
+        return __str_from(buf, n);
+    }
+
+    static bool setEnv(String name, String val) {
+        int f = _fn(0, "SetEnvironmentVariableA");
+        if (f == 0) return false;
+        return __call(f, (int) name, (int) val) != 0;
+    }
+
+    static String cwd() {
+        int f = _fn(0, "GetCurrentDirectoryA");
+        if (f == 0) return "";
+        int buf = __alloc_atomic(1024);
+        int n = __call(f, 1024, buf) & 0xFFFFFFFF;
+        return __str_from(buf, n);
+    }
+
+    static bool cd(String path) {
+        int f = _fn(0, "SetCurrentDirectoryA");
+        if (f == 0) return false;
+        return __call(f, (int) path) != 0;
+    }
+
+    static bool mkdir(String path) {
+        int f = _fn(0, "CreateDirectoryA");
+        if (f == 0) return false;
+        return __call(f, (int) path, 0) != 0;
+    }
+
+    static bool rmdir(String path) {
+        int f = _fn(0, "RemoveDirectoryA");
+        if (f == 0) return false;
+        return __call(f, (int) path) != 0;
+    }
+
+    static bool rm(String path) {
+        int f = _fn(0, "DeleteFileA");
+        if (f == 0) return false;
+        return __call(f, (int) path) != 0;
+    }
+
+    static bool mv(String src, String dst) {
+        int f = _fn(0, "MoveFileA");
+        if (f == 0) return false;
+        return __call(f, (int) src, (int) dst) != 0;
+    }
+
+    static bool cp(String src, String dst) {
+        int f = _fn(0, "CopyFileA");
+        if (f == 0) return false;
+        return __call(f, (int) src, (int) dst, 0) != 0;
+    }
+
+    static bool exists(String path) {
+        int attrs = __winapi(13, (int) path) & 0xFFFFFFFF;
+        return attrs != 0xFFFFFFFF;
+    }
+
+    static bool isDir(String path) {
+        int attrs = __winapi(13, (int) path) & 0xFFFFFFFF;
+        if (attrs == 0xFFFFFFFF) return false;
+        return (attrs & 0x10) != 0;
+    }
+
+    // Lists file and folder names inside `dir` (excluding "." and "..").
+    static List<String> ls(String dir) {
+        List<String> out = new List<String>();
+        int fFirst = _fn(0, "FindFirstFileA");
+        int fNext = _fn(0, "FindNextFileA");
+        int fClose = _fn(0, "FindClose");
+        if (fFirst == 0 || fNext == 0 || fClose == 0) return out;
+        String pat = dir;
+        if (!pat.endsWith("\\") && !pat.endsWith("/")) pat = pat + "\\";
+        pat = pat + "*";
+        int wfd = __alloc_atomic(320);
+        int h = __call(fFirst, (int) pat, wfd);
+        if (h == -1) return out;
+        while (true) {
+            // cFileName starts at offset 44 in WIN32_FIND_DATAA
+            int namePtr = wfd + 44;
+            int len = 0;
+            while (__peek8(namePtr + len) != 0 && len < 260) len++;
+            String name = __str_from(namePtr, len);
+            if (!name.equals(".") && !name.equals("..")) out.add(name);
+            if (__call(fNext, h, wfd) == 0) break;
+        }
+        __call(fClose, h);
+        return out;
+    }
+
+    // ---- System & Hardware Info ----
+    static String hostname() {
+        int f = _fn(0, "GetComputerNameA");
+        if (f == 0) return "";
+        int buf = __alloc_atomic(256);
+        int sz = __alloc_atomic(8);
+        _poke32(sz, 255);
+        if (__call(f, buf, sz) == 0) return "";
+        return __str_from(buf, _peek32(sz));
+    }
+
+    static String user() {
+        int f = _fn(3, "GetUserNameA");
+        if (f == 0) return env("USERNAME");
+        int buf = __alloc_atomic(256);
+        int sz = __alloc_atomic(8);
+        _poke32(sz, 255);
+        if (__call(f, buf, sz) == 0) return env("USERNAME");
+        int n = _peek32(sz);
+        if (n > 0) n--;
+        return __str_from(buf, n);
+    }
+
+    static int cpuCores() {
+        int f = _fn(0, "GetSystemInfo");
+        if (f == 0) return 1;
+        int si = __alloc_atomic(48);
+        __call(f, si);
+        return _peek32(si + 32);
+    }
+
+    static int ramTotalMB() {
+        int f = _fn(0, "GlobalMemoryStatusEx");
+        if (f == 0) return 0;
+        int ms = __alloc_atomic(64);
+        _poke32(ms, 64);
+        if (__call(f, ms) == 0) return 0;
+        return __peek64(ms + 8) / (1024 * 1024);
+    }
+
+    static int ramFreeMB() {
+        int f = _fn(0, "GlobalMemoryStatusEx");
+        if (f == 0) return 0;
+        int ms = __alloc_atomic(64);
+        _poke32(ms, 64);
+        if (__call(f, ms) == 0) return 0;
+        return __peek64(ms + 16) / (1024 * 1024);
+    }
+
+    // ---- Native UI, Mouse & Clipboard (user32.dll) ----
+    static void alert(String title, String message) {
+        int f = _fn(1, "MessageBoxA");
+        if (f != 0) __call(f, 0, (int) message, (int) title, 0);
+    }
+
+    static bool confirm(String title, String message) {
+        int f = _fn(1, "MessageBoxA");
+        if (f == 0) return false;
+        return (__call(f, 0, (int) message, (int) title, 4) & 0xFFFFFFFF) == 6;
+    }
+
+    static bool setMouse(int x, int y) {
+        int f = _fn(1, "SetCursorPos");
+        if (f == 0) return false;
+        return __call(f, x, y) != 0;
+    }
+
+    static int mouseX() {
+        int f = _fn(1, "GetCursorPos");
+        if (f == 0) return 0;
+        int pt = __alloc_atomic(8);
+        __call(f, pt);
+        return _peek32s(pt);
+    }
+
+    static int mouseY() {
+        int f = _fn(1, "GetCursorPos");
+        if (f == 0) return 0;
+        int pt = __alloc_atomic(8);
+        __call(f, pt);
+        return _peek32s(pt + 4);
+    }
+
+    static String windowTitle() {
+        int fFg = _fn(1, "GetForegroundWindow");
+        int fTxt = _fn(1, "GetWindowTextA");
+        if (fFg == 0 || fTxt == 0) return "";
+        int hwnd = __call(fFg);
+        if (hwnd == 0) return "";
+        int buf = __alloc_atomic(512);
+        int n = __call(fTxt, hwnd, buf, 512) & 0xFFFFFFFF;
+        return __str_from(buf, n);
+    }
+
+    static String clipboardGet() {
+        int fOpen = _fn(1, "OpenClipboard");
+        int fGet = _fn(1, "GetClipboardData");
+        int fClose = _fn(1, "CloseClipboard");
+        int fLock = _fn(0, "GlobalLock");
+        int fUnlock = _fn(0, "GlobalUnlock");
+        if (fOpen == 0 || fGet == 0 || fClose == 0 || fLock == 0 || fUnlock == 0) return "";
+        if (__call(fOpen, 0) == 0) return "";
+        int h = __call(fGet, 1); // CF_TEXT = 1
+        if (h == 0) { __call(fClose); return ""; }
+        int p = __call(fLock, h);
+        if (p == 0) { __call(fClose); return ""; }
+        int n = 0;
+        while (__peek8(p + n) != 0) n++;
+        String res = __str_from(p, n);
+        __call(fUnlock, h);
+        __call(fClose);
+        return res;
+    }
+
+    static bool clipboardSet(String text) {
+        int fOpen = _fn(1, "OpenClipboard");
+        int fEmpty = _fn(1, "EmptyClipboard");
+        int fSet = _fn(1, "SetClipboardData");
+        int fClose = _fn(1, "CloseClipboard");
+        int fAlloc = _fn(0, "GlobalAlloc");
+        int fLock = _fn(0, "GlobalLock");
+        int fUnlock = _fn(0, "GlobalUnlock");
+        if (fOpen == 0 || fSet == 0 || fAlloc == 0) return false;
+        int len = __strlen(text);
+        int h = __call(fAlloc, 2, len + 1); // GMEM_MOVEABLE = 2
+        if (h == 0) return false;
+        int p = __call(fLock, h);
+        if (p == 0) return false;
+        __memcpy(p, (int) text, len);
+        __poke8(p + len, 0);
+        __call(fUnlock, h);
+        if (__call(fOpen, 0) == 0) return false;
+        __call(fEmpty);
+        int ok = __call(fSet, 1, h);
+        __call(fClose);
+        return ok != 0;
+    }
+}

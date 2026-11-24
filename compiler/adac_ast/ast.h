@@ -145,7 +145,7 @@ enum {  /* node flags */
 /* intrinsicos (N_BUILTIN) */
 enum {
     BI_ARRLEN = 1, BI_SQRT, BI_WINAPI, BI_PEEK8, BI_POKE8, BI_PEEK64, BI_POKE64,
-    BI_SP, BI_GBEGIN, BI_GEND, BI_MEMCPY
+    BI_SP, BI_GBEGIN, BI_GEND, BI_MEMCPY, BI_CALL
 };
 
 typedef struct Node Node;

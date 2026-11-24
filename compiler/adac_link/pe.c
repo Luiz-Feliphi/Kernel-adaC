@@ -22,7 +22,8 @@
 static const char *IMPORT_NAMES[API__COUNT] = {
     "ExitProcess", "GetStdHandle", "WriteFile", "ReadFile",
     "GetProcessHeap", "HeapAlloc", "HeapFree", "SetConsoleOutputCP",
-    "GetTickCount64", "Sleep", "CreateFileA", "GetFileSize", "CloseHandle", "GetFileAttributesA"
+    "GetTickCount64", "Sleep", "CreateFileA", "GetFileSize", "CloseHandle", "GetFileAttributesA",
+    "LoadLibraryA", "GetProcAddress"
 };
 
 static uint32_t align_up(uint32_t v, uint32_t a) { return (v + a - 1) & ~(a - 1); }
