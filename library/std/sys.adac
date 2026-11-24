@@ -38,6 +38,11 @@ void __setup() {
     __stderr = __winapi(1, -12);
     __buf = __winapi(5, __heap, 8, 256);
     __rbuf = __winapi(5, __heap, 8, 4096);
-    __winapi(7, 65001);                 // console in UTF-8
+    __winapi(7, 65001);                 // console output in UTF-8
+    int __k32 = __winapi(14, (int) "kernel32.dll");
+    if (__k32 != 0) {
+        int __fcp = __winapi(15, __k32, (int) "SetConsoleCP");
+        if (__fcp != 0) __call(__fcp, 65001); // console input in UTF-8
+    }
     __gc_init();
 }

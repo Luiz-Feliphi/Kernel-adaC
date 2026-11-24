@@ -1,0 +1,259 @@
+// std::unicode - UTF-8 & UTF-16LE Unicode support for adaC.
+// Provides codepoint-aware string operations and Windows UTF-16 conversion.
+
+class Utf8 {
+    static int _k32 = 0;
+    static int _u32 = 0;
+    static int _fMb2Wc = 0;
+    static int _fWc2Mb = 0;
+    static int _fUpperW = 0;
+    static int _fLowerW = 0;
+
+    static void _init() {
+        if (_k32 != 0) return;
+        _k32 = __winapi(14, (int) "kernel32.dll");
+        _u32 = __winapi(14, (int) "user32.dll");
+        if (_k32 != 0) {
+            _fMb2Wc = __winapi(15, _k32, (int) "MultiByteToWideChar");
+            _fWc2Mb = __winapi(15, _k32, (int) "WideCharToMultiByte");
+        }
+        if (_u32 != 0) {
+            _fUpperW = __winapi(15, _u32, (int) "CharUpperW");
+            _fLowerW = __winapi(15, _u32, (int) "CharLowerW");
+        }
+    }
+
+    // Converts a UTF-8 String into a null-terminated UTF-16LE buffer (pointer).
+    static int toUtf16(String s) {
+        _init();
+        if (s == null) {
+            int empty = __alloc_atomic(2);
+            __poke8(empty, 0); __poke8(empty + 1, 0);
+            return empty;
+        }
+        int slen = __strlen(s);
+        if (slen == 0) {
+            int empty = __alloc_atomic(2);
+            __poke8(empty, 0); __poke8(empty + 1, 0);
+            return empty;
+        }
+        if (_fMb2Wc == 0) {
+            int w = __alloc_atomic((slen + 1) * 2);
+            for (int i = 0; i < slen; i++) {
+                __poke8(w + i * 2, __peek8((int) s + i));
+                __poke8(w + i * 2 + 1, 0);
+            }
+            __poke8(w + slen * 2, 0); __poke8(w + slen * 2 + 1, 0);
+            return w;
+        }
+        int wchars = __call(_fMb2Wc, 65001, 0, (int) s, slen, 0, 0) & 0xFFFFFFFF;
+        int buf = __alloc_atomic((wchars + 1) * 2);
+        __call(_fMb2Wc, 65001, 0, (int) s, slen, buf, wchars);
+        __poke8(buf + wchars * 2, 0);
+        __poke8(buf + wchars * 2 + 1, 0);
+        return buf;
+    }
+
+    // Returns the number of UTF-16 code units (excluding null terminator) in a UTF-16LE buffer.
+    static int utf16Len(int wptr) {
+        if (wptr == 0) return 0;
+        int n = 0;
+        while (__peek8(wptr + n * 2) != 0 || __peek8(wptr + n * 2 + 1) != 0) n++;
+        return n;
+    }
+
+    // Converts a null-terminated UTF-16LE buffer into a UTF-8 String.
+    static String fromUtf16(int wptr) {
+        _init();
+        if (wptr == 0) return "";
+        int wlen = utf16Len(wptr);
+        if (wlen == 0) return "";
+        if (_fWc2Mb == 0) {
+            int out = __alloc_atomic(wlen + 1);
+            for (int i = 0; i < wlen; i++) __poke8(out + i, __peek8(wptr + i * 2));
+            return __str_from(out, wlen);
+        }
+        int bytes = __call(_fWc2Mb, 65001, 0, wptr, wlen, 0, 0, 0, 0) & 0xFFFFFFFF;
+        if (bytes <= 0) return "";
+        int buf = __alloc_atomic(bytes + 1);
+        __call(_fWc2Mb, 65001, 0, wptr, wlen, buf, bytes, 0, 0);
+        return __str_from(buf, bytes);
+    }
+
+    // Number of Unicode codepoints (characters) in a UTF-8 String.
+    static int len(String s) {
+        if (s == null) return 0;
+        int p = (int) s;
+        int i = 0;
+        int count = 0;
+        int b = __peek8(p);
+        while (b != 0) {
+            if ((b & 0xC0) != 0x80) count++;
+            i++;
+            b = __peek8(p + i);
+        }
+        return count;
+    }
+
+    // Byte length of a single UTF-8 sequence starting at byte b.
+    static int seqLen(int b) {
+        if (b < 0x80) return 1;
+        if ((b & 0xE0) == 0xC0) return 2;
+        if ((b & 0xF0) == 0xE0) return 3;
+        if ((b & 0xF8) == 0xF0) return 4;
+        return 1;
+    }
+
+    // Returns the byte offset of the `charIdx`-th Unicode character.
+    static int byteOffset(String s, int charIdx) {
+        if (s == null || charIdx <= 0) return 0;
+        int p = (int) s;
+        int i = 0;
+        int c = 0;
+        while (__peek8(p + i) != 0) {
+            if (c == charIdx) return i;
+            int step = seqLen(__peek8(p + i));
+            i = i + step;
+            c++;
+        }
+        return i;
+    }
+
+    // Returns the i-th Unicode character as a String.
+    static String at(String s, int charIdx) {
+        if (s == null || charIdx < 0) return "";
+        int off = byteOffset(s, charIdx);
+        int p = (int) s;
+        int b = __peek8(p + off);
+        if (b == 0) return "";
+        int k = seqLen(b);
+        int blen = __strlen(s);
+        if (off + k > blen) k = blen - off;
+        return __str_from(p + off, k);
+    }
+
+    // Returns the Unicode codepoint at `charIdx`.
+    static int codepointAt(String s, int charIdx) {
+        if (s == null || charIdx < 0) return 0;
+        int off = byteOffset(s, charIdx);
+        int p = (int) s + off;
+        int b0 = __peek8(p);
+        if (b0 == 0) return 0;
+        if (b0 < 0x80) return b0;
+        if ((b0 & 0xE0) == 0xC0) return ((b0 & 0x1F) << 6) | (__peek8(p + 1) & 0x3F);
+        if ((b0 & 0xF0) == 0xE0) return ((b0 & 0x0F) << 12) | ((__peek8(p + 1) & 0x3F) << 6) | (__peek8(p + 2) & 0x3F);
+        if ((b0 & 0xF8) == 0xF0) return ((b0 & 0x07) << 18) | ((__peek8(p + 1) & 0x3F) << 12) | ((__peek8(p + 2) & 0x3F) << 6) | (__peek8(p + 3) & 0x3F);
+        return b0;
+    }
+
+    // Encodes a Unicode codepoint (0..0x10FFFF) into a UTF-8 String.
+    static String fromCodepoint(int cp) {
+        if (cp <= 0x7F) {
+            int b = __alloc_atomic(2);
+            __poke8(b, cp);
+            return __str_from(b, 1);
+        }
+        if (cp <= 0x7FF) {
+            int b = __alloc_atomic(3);
+            __poke8(b, 0xC0 | (cp >> 6));
+            __poke8(b + 1, 0x80 | (cp & 0x3F));
+            return __str_from(b, 2);
+        }
+        if (cp <= 0xFFFF) {
+            int b = __alloc_atomic(4);
+            __poke8(b, 0xE0 | (cp >> 12));
+            __poke8(b + 1, 0x80 | ((cp >> 6) & 0x3F));
+            __poke8(b + 2, 0x80 | (cp & 0x3F));
+            return __str_from(b, 3);
+        }
+        int b = __alloc_atomic(5);
+        __poke8(b, 0xF0 | ((cp >> 18) & 0x07));
+        __poke8(b + 1, 0x80 | ((cp >> 12) & 0x3F));
+        __poke8(b + 2, 0x80 | ((cp >> 6) & 0x3F));
+        __poke8(b + 3, 0x80 | (cp & 0x3F));
+        return __str_from(b, 4);
+    }
+
+    // Character-safe substring [startChar, endChar).
+    static String sub(String s, int startChar, int endChar) {
+        if (s == null || endChar <= startChar) return "";
+        if (startChar < 0) startChar = 0;
+        int b0 = byteOffset(s, startChar);
+        int b1 = byteOffset(s, endChar);
+        int blen = __strlen(s);
+        if (b0 > blen) b0 = blen;
+        if (b1 > blen) b1 = blen;
+        if (b1 <= b0) return "";
+        return __str_from((int) s + b0, b1 - b0);
+    }
+
+    // Removes the last Unicode character (used by Backspace in inputs).
+    static String popChar(String s) {
+        if (s == null) return "";
+        int blen = __strlen(s);
+        if (blen == 0) return "";
+        int p = (int) s;
+        int i = blen - 1;
+        while (i > 0 && (__peek8(p + i) & 0xC0) == 0x80) i--;
+        return __str_from(p, i);
+    }
+
+    // Splits a String into a List of Unicode characters.
+    static List<String> chars(String s) {
+        List<String> out = new List<String>();
+        if (s == null) return out;
+        int p = (int) s;
+        int blen = __strlen(s);
+        int i = 0;
+        while (i < blen) {
+            int k = seqLen(__peek8(p + i));
+            if (i + k > blen) k = blen - i;
+            out.add(__str_from(p + i, k));
+            i = i + k;
+        }
+        return out;
+    }
+
+    // Full Unicode uppercase (handles accents like á -> Á, ç -> Ç).
+    static String toUpper(String s) {
+        _init();
+        if (s == null || s.length() == 0) return "";
+        if (_fUpperW == 0) return s.toUpperCase();
+        int w = toUtf16(s);
+        __call(_fUpperW, w);
+        return fromUtf16(w);
+    }
+
+    // Full Unicode lowercase (handles accents like Á -> á, Ç -> ç).
+    static String toLower(String s) {
+        _init();
+        if (s == null || s.length() == 0) return "";
+        if (_fLowerW == 0) return s.toLowerCase();
+        int w = toUtf16(s);
+        __call(_fLowerW, w);
+        return fromUtf16(w);
+    }
+
+    // Checks if a String is valid UTF-8.
+    static bool isValid(String s) {
+        if (s == null) return true;
+        int p = (int) s;
+        int n = __strlen(s);
+        int i = 0;
+        while (i < n) {
+            int b = __peek8(p + i);
+            int k = 1;
+            if (b < 0x80) { i++; continue; }
+            else if ((b & 0xE0) == 0xC0) k = 2;
+            else if ((b & 0xF0) == 0xE0) k = 3;
+            else if ((b & 0xF8) == 0xF0) k = 4;
+            else return false;
+            if (i + k > n) return false;
+            for (int j = 1; j < k; j++) {
+                if ((__peek8(p + i + j) & 0xC0) != 0x80) return false;
+            }
+            i = i + k;
+        }
+        return true;
+    }
+}

@@ -55,6 +55,7 @@ name as a module it imports.
 | `std::db` | `Database`, `Db`, `Sqlite` | `Db.open(path)`, KV (`set`, `get`, `has`, `del`, `keys`), Tables (`createTable`, `insert`, `insertRow`, `selectAll`, `where`, `updateWhere`, `deleteWhere`, `count`, `tables`), simple SQL (`exec`, `query`), `save`/`commit`, plus optional `Sqlite` (`sqlite3.dll`) |
 | `std::web` | `Web`, `WebApp`, `HttpRequest`, `Json` | `Web.listen(port)`, `app.next()`, `app.req()` (`is`, `startsWith`, `param`, `query`, `header`, `body`), `app.status()`, `app.header()`, `app.text()`, `app.html()`, `app.json()`, `app.sendFile()`, `app.redirect()`, `Web.get(ip, port, path)`, `Json.obj/fromMap/fromList/parse` |
 | `std::ui` | `Ui`, `UiApp`, `UiElement` | Native Win32 + anti-aliased DIB + ClearType UI (no Chromium). Two styling modes: literal CSS (`app.css(...)`, `app.loadCss(...)` with tags, `.class`, `#id`, `:hover`, `:active`, `:focus`, `linear-gradient`, `box-shadow`, `border-radius`) and inline fluent styling (`.bg()`, `.gradient()`, `.hoverBg()`, `.radius()`, `.paddingXY()`, `.shadow()`, `.bold()`) |
+| `std::unicode` | `Utf8` | `len`, `at`, `codepointAt`, `fromCodepoint`, `sub`, `popChar`, `chars`, `toUpper`, `toLower`, `isValid`, `toUtf16`, `fromUtf16` |
 
 `List<T>`: `add push_back get set insert removeAt pop size isEmpty clear indexOf contains`, `l[i]`, `l[i] = x`.
 `Map<String,V>`: `put get has remove size isEmpty clear keys`, `m["k"]`, `m["k"] = v`.

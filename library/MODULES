@@ -42,3 +42,4 @@ opt     std/pc.adac
 opt     std/db.adac
 opt     std/web.adac
 opt     std/ui.adac
+opt     std/unicode.adac

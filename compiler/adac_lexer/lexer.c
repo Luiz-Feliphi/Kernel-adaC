@@ -105,10 +105,38 @@ static int read_escape(Lexer *lx) {
         if (n == 0) diag_error(loc, "escape '\\x' has no hexadecimal digits");
         return v;
     }
+    case 'u': {
+        int v = 0;
+        for (int n = 0; n < 4; n++) {
+            if (!isxdigit((uint8_t)peek(lx, 0))) { diag_error(loc, "escape '\\u' requires 4 hexadecimal digits"); break; }
+            char h = advance(lx);
+            v = v * 16 + (isdigit((uint8_t)h) ? h - '0' : (tolower(h) - 'a' + 10));
+        }
+        return v;
+    }
+    case 'U': {
+        int v = 0;
+        for (int n = 0; n < 8; n++) {
+            if (!isxdigit((uint8_t)peek(lx, 0))) { diag_error(loc, "escape '\\U' requires 8 hexadecimal digits"); break; }
+            char h = advance(lx);
+            v = v * 16 + (isdigit((uint8_t)h) ? h - '0' : (tolower(h) - 'a' + 10));
+        }
+        return v;
+    }
     default:
         diag_error(loc, "unknown escape sequence '\\%c'", c);
         return c;
     }
+}
+
+static int encode_utf8(int cp, char *out) {
+    uint32_t u = (uint32_t)cp;
+    if (u <= 0x7F) { out[0] = (char)u; return 1; }
+    if (u <= 0x7FF) { out[0] = (char)(0xC0 | (u >> 6)); out[1] = (char)(0x80 | (u & 0x3F)); return 2; }
+    if (u <= 0xFFFF) { out[0] = (char)(0xE0 | (u >> 12)); out[1] = (char)(0x80 | ((u >> 6) & 0x3F)); out[2] = (char)(0x80 | (u & 0x3F)); return 3; }
+    out[0] = (char)(0xF0 | ((u >> 18) & 0x07)); out[1] = (char)(0x80 | ((u >> 12) & 0x3F));
+    out[2] = (char)(0x80 | ((u >> 6) & 0x3F)); out[3] = (char)(0x80 | (u & 0x3F));
+    return 4;
 }
 
 static void lex_string(Lexer *lx) {
@@ -122,7 +150,18 @@ static void lex_string(Lexer *lx) {
             break;
         }
         int c = advance(lx);
-        if (c == '\\') c = read_escape(lx);
+        if (c == '\\') {
+            char esc = peek(lx, 0);
+            int cp = read_escape(lx);
+            if (esc == 'u' || esc == 'U') {
+                char u8[4];
+                int k = encode_utf8(cp, u8);
+                if (n + k + 1 > cap) { cap = cap * 2 + k; buf = xrealloc(buf, (size_t)cap); }
+                for (int i = 0; i < k; i++) buf[n++] = u8[i];
+                continue;
+            }
+            c = cp;
+        }
         if (n + 2 > cap) { cap *= 2; buf = xrealloc(buf, (size_t)cap); }
         buf[n++] = (char)c;
     }

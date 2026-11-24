@@ -8,12 +8,15 @@ void main() {
 
     // MODE 1: Literal CSS (tags, .classes, #ids, :hover, :active, linear-gradient, box-shadow)
     app.css(
-        "window { background-color: #09090b; padding: 28px; gap: 18px; }" +
+        "window { 
+            background-color: #09090b; 
+            padding: 28px; gap: 18px; 
+        }" +
         ".card { background-color: #18181b; border: 1px solid #27272a; border-radius: 16px; padding: 22px; gap: 14px; box-shadow: 0 12px 28px #000000; }" +
         ".btn-primary { background: linear-gradient(90deg, #6366f1, #8b5cf6); color: #ffffff; border-radius: 10px; padding: 11px 22px; font-weight: bold; box-shadow: 0 6px 16px #000000; }" +
         ".btn-primary:hover { background-color: #4f46e5; }" +
         ".btn-primary:active { background-color: #4338ca; }" +
-        ".pill { background-color: #534da5ff; color: #a5b4fc; border-radius: 999px; padding: 4px 12px; font-size: 12px; font-weight: bold; }"
+        ".pill { background-color: #1e1b4b; color: #a5b4fc; border-radius: 999px; padding: 4px 12px; font-size: 12px; font-weight: bold; }"
     );
 
     // Header (styled via CSS + inline)
