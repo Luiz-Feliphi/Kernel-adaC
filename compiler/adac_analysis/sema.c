@@ -1266,8 +1266,8 @@ static Type *builtin_call(Node *n, const char *name, Type *hint, bool *handled) 
                 diag_error(loc, "__winapi requires the API index (literal) and up to 7 arguments");
                 return TY_error_t;
             }
-            if (INTR[i].bi == BI_CALL && (na < 1 || na > 8)) {
-                diag_error(loc, "__call requires a function pointer and up to 7 arguments");
+            if (INTR[i].bi == BI_CALL && (na < 1 || na > 16)) {
+                diag_error(loc, "__call requires a function pointer and up to 15 arguments");
                 return TY_error_t;
             }
             for (int k = (INTR[i].bi == BI_WINAPI ? 1 : 0); k < na; k++) {

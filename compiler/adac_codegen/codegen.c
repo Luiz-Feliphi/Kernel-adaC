@@ -356,17 +356,19 @@ static void gen_builtin(Node *n) {
         int na = n->list.n - 1;
         gen_expr(n->list.v[0]); a_push(RAX);
         for (int i = 1; i <= na; i++) { gen_expr(n->list.v[i]); a_push(RAX); }
-        static const int regs[] = {0, RCX, RDX, R8, R9, R10, R11, RSI};
-        for (int i = na; i >= 1; i--) a_pop(regs[i]);
-        a_pop(RAX);
         a_mov_rr(R12, RSP);
-        a_alu_ri(ALU_SUB, RSP, 64);
+        int frame = ((32 + (na > 4 ? (na - 4) * 8 : 0)) + 15) & ~15;
+        a_alu_ri(ALU_SUB, RSP, frame);
         a_alu_ri(ALU_AND, RSP, -16);
-        if (na >= 5) a_store(RSP, 32, R10);
-        if (na >= 6) a_store(RSP, 40, R11);
-        if (na >= 7) a_store(RSP, 48, RSI);
+        for (int i = 5; i <= na; i++) {
+            a_load(RAX, R12, (na - i) * 8);
+            a_store(RSP, 32 + (i - 5) * 8, RAX);
+        }
+        static const int regs[] = {0, RCX, RDX, R8, R9};
+        for (int i = 1; i <= na && i <= 4; i++) a_load(regs[i], R12, (na - i) * 8);
+        a_load(RAX, R12, na * 8);
         a_call_reg(RAX);
-        a_mov_rr(RSP, R12);
+        a_lea(RSP, R12, (na + 1) * 8);
         break;
     }
     default: diag_fatal("internal error: intrinsic %d", n->op);

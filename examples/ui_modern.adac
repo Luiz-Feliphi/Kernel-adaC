@@ -1,0 +1,67 @@
+// Example showcasing BOTH UI styling modes in std::ui (0% Chromium, 100% native x64):
+//   Mode 1: Literal CSS rules (app.css / app.loadCss)
+//   Mode 2: Inline Python/Flutter-style fluent styling (.bg().radius().shadow()...)
+import std::ui;
+
+void main() {
+    var app = Ui.window("Kernel-adaC Studio — Native UI", 920, 620);
+
+    // MODE 1: Literal CSS (tags, .classes, #ids, :hover, :active, linear-gradient, box-shadow)
+    app.css(
+        "window { background-color: #09090b; padding: 28px; gap: 18px; }" +
+        ".card { background-color: #18181b; border: 1px solid #27272a; border-radius: 16px; padding: 22px; gap: 14px; box-shadow: 0 12px 28px #000000; }" +
+        ".btn-primary { background: linear-gradient(90deg, #6366f1, #8b5cf6); color: #ffffff; border-radius: 10px; padding: 11px 22px; font-weight: bold; box-shadow: 0 6px 16px #000000; }" +
+        ".btn-primary:hover { background-color: #4f46e5; }" +
+        ".btn-primary:active { background-color: #4338ca; }" +
+        ".pill { background-color: #1e1b4b; color: #a5b4fc; border-radius: 999px; padding: 4px 12px; font-size: 12px; font-weight: bold; }"
+    );
+
+    // Header (styled via CSS + inline)
+    var header = app.row().center();
+    header.title("Kernel-adaC UI").fontSize(28);
+    header.badge("NATIVE x64 • ZERO CHROMIUM").cls("pill");
+
+    // Card 1: CSS-styled Card
+    var cssCard = app.card().cls("card");
+    cssCard.label("Modo 1: Estilizado com CSS literal").bold().fontSize(17);
+    var nameInput = cssCard.input("Digite seu nome...").width(340);
+    var actions = cssCard.row();
+    var btnSave = actions.button("Salvar Perfil").cls("btn-primary");
+    var statusLbl = actions.label("Pronto.").color("#a1a1aa");
+
+    // Card 2: Inline Python/Flutter-style Card (Mode 2)
+    var inlineCard = app.card()
+        .bg("#141418")
+        .border("#3f3f46", 1)
+        .radius(18)
+        .padding(22)
+        .gap(12)
+        .shadow(16);
+
+    inlineCard.label("Modo 2: Estilizado direto no codigo (Fluent)").bold().fontSize(17).color("#f4f4f5");
+    var darkToggle = inlineCard.toggle("Modo Turbo Nativo", true);
+    var prog = inlineCard.progress(65).width(420).height(12);
+
+    var btnBoost = inlineCard.button("+10% Progresso")
+        .gradient("#ec4899", "#f43f5e")
+        .hoverBg("#db2777")
+        .radius(12)
+        .paddingXY(20, 10)
+        .bold();
+
+    while (app.loop()) {
+        if (btnSave.clicked()) {
+            String n = nameInput.text();
+            if (n.length() == 0) statusLbl.setText("Digite um nome primeiro!").color("#f87171");
+            else statusLbl.setText("Bem-vindo, " + n + "!").color("#4ade80");
+        }
+        if (btnBoost.clicked()) {
+            int v = prog.value() + 10;
+            if (v > 100) v = 10;
+            prog.setValue(v);
+        }
+        if (darkToggle.changed()) {
+            statusLbl.setText(darkToggle.checked() ? "Turbo ativado!" : "Turbo desativado.");
+        }
+    }
+}

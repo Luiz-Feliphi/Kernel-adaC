@@ -1,0 +1,1071 @@
+// std::ui - Native modern UI framework for adaC (Win32 + DIB anti-aliased renderer + ClearType).
+// Supports TWO styling modes:
+//   1) Literal CSS rules: app.css("...") / app.loadCss("style.css")
+//   2) Fluent inline code styling: btn.bg("#6366f1").hoverBg("#4f46e5").radius(12).paddingXY(20, 10).bold()
+use std::fs;
+use std::string_builder;
+
+class _UiStyle {
+    int bg;           bool hasBg;
+    int bg2;          bool hasGrad;
+    int hoverBg;      bool hasHoverBg;
+    int activeBg;     bool hasActiveBg;
+    int fg;           bool hasFg;
+    int borderColor;  bool hasBorderColor;
+    int borderWidth;  bool hasBorderWidth;
+    int radius;       bool hasRadius;
+    int padX;         int padY;        bool hasPad;
+    int margin;       bool hasMargin;
+    int gap;          bool hasGap;
+    int width;        bool hasWidth;
+    int height;       bool hasHeight;
+    int fontSize;     bool hasFontSize;
+    bool bold;        bool hasBold;
+    String fontName;  bool hasFontName;
+    int align;        bool hasAlign;   // 0=left, 1=center, 2=right
+    int shadow;       bool hasShadow;
+    bool isRow;       bool hasDir;
+    int alignItems;   bool hasAlignItems; // 0=start, 1=center, 2=end
+
+    _UiStyle() {
+        bg = 0; hasBg = false;
+        bg2 = 0; hasGrad = false;
+        hoverBg = 0; hasHoverBg = false;
+        activeBg = 0; hasActiveBg = false;
+        fg = 0xFFFFFF; hasFg = false;
+        borderColor = 0; hasBorderColor = false;
+        borderWidth = 0; hasBorderWidth = false;
+        radius = 0; hasRadius = false;
+        padX = 0; padY = 0; hasPad = false;
+        margin = 0; hasMargin = false;
+        gap = 8; hasGap = false;
+        width = 0; hasWidth = false;
+        height = 0; hasHeight = false;
+        fontSize = 15; hasFontSize = false;
+        bold = false; hasBold = false;
+        fontName = "Segoe UI"; hasFontName = false;
+        align = 0; hasAlign = false;
+        shadow = 0; hasShadow = false;
+        isRow = false; hasDir = false;
+        alignItems = 0; hasAlignItems = false;
+    }
+
+    void copyFrom(_UiStyle s) {
+        if (s.hasBg) { bg = s.bg; hasBg = true; }
+        if (s.hasGrad) { bg2 = s.bg2; hasGrad = true; }
+        if (s.hasHoverBg) { hoverBg = s.hoverBg; hasHoverBg = true; }
+        if (s.hasActiveBg) { activeBg = s.activeBg; hasActiveBg = true; }
+        if (s.hasFg) { fg = s.fg; hasFg = true; }
+        if (s.hasBorderColor) { borderColor = s.borderColor; hasBorderColor = true; }
+        if (s.hasBorderWidth) { borderWidth = s.borderWidth; hasBorderWidth = true; }
+        if (s.hasRadius) { radius = s.radius; hasRadius = true; }
+        if (s.hasPad) { padX = s.padX; padY = s.padY; hasPad = true; }
+        if (s.hasMargin) { margin = s.margin; hasMargin = true; }
+        if (s.hasGap) { gap = s.gap; hasGap = true; }
+        if (s.hasWidth) { width = s.width; hasWidth = true; }
+        if (s.hasHeight) { height = s.height; hasHeight = true; }
+        if (s.hasFontSize) { fontSize = s.fontSize; hasFontSize = true; }
+        if (s.hasBold) { bold = s.bold; hasBold = true; }
+        if (s.hasFontName) { fontName = s.fontName; hasFontName = true; }
+        if (s.hasAlign) { align = s.align; hasAlign = true; }
+        if (s.hasShadow) { shadow = s.shadow; hasShadow = true; }
+        if (s.hasDir) { isRow = s.isRow; hasDir = true; }
+        if (s.hasAlignItems) { alignItems = s.alignItems; hasAlignItems = true; }
+    }
+}
+
+class _CssRule {
+    String selector; // e.g. "button", ".btn", "#save"
+    String pseudo;   // "", "hover", "active", "focus"
+    _UiStyle style;
+    _CssRule(String sel, String ps, _UiStyle st) { selector = sel; pseudo = ps; style = st; }
+}
+
+class _UiColor {
+    static int _hexVal(char c) {
+        if (c >= '0' && c <= '9') return (int) c - 48;
+        if (c >= 'a' && c <= 'f') return (int) c - 87;
+        if (c >= 'A' && c <= 'F') return (int) c - 55;
+        return 0;
+    }
+
+    static int _parseNum(String s) {
+        String t = s.trim();
+        int n = 0;
+        for (int i = 0; i < t.length(); i++) {
+            char c = t[i];
+            if (c >= '0' && c <= '9') n = n * 10 + ((int) c - 48);
+            else if (n > 0) break;
+        }
+        return n;
+    }
+
+    // Returns 0xAARRGGBB (alpha 255 by default, 0 for transparent)
+    static int parse(String raw) {
+        if (raw == null) return 0xFF000000;
+        String s = raw.trim().toLowerCase();
+        if (s.equals("transparent") || s.equals("none")) return 0;
+        if (s.equals("white")) return 0xFFFFFFFF;
+        if (s.equals("black")) return 0xFF000000;
+        if (s.equals("red")) return 0xFFEF4444;
+        if (s.equals("green")) return 0xFF22C55E;
+        if (s.equals("blue")) return 0xFF3B82F6;
+        if (s.equals("indigo")) return 0xFF6366F1;
+        if (s.equals("purple")) return 0xFFA855F7;
+        if (s.equals("pink")) return 0xFFEC4899;
+        if (s.equals("cyan")) return 0xFF06B6D4;
+        if (s.equals("amber") || s.equals("yellow")) return 0xFFF59E0B;
+        if (s.equals("gray") || s.equals("grey")) return 0xFF71717A;
+        if (s.startsWith("#")) {
+            String h = s.substring(1, s.length());
+            if (h.length() == 3) {
+                int r = _hexVal(h[0]) * 17;
+                int g = _hexVal(h[1]) * 17;
+                int b = _hexVal(h[2]) * 17;
+                return (255 << 24) | (r << 16) | (g << 8) | b;
+            }
+            if (h.length() >= 6) {
+                int r = (_hexVal(h[0]) << 4) | _hexVal(h[1]);
+                int g = (_hexVal(h[2]) << 4) | _hexVal(h[3]);
+                int b = (_hexVal(h[4]) << 4) | _hexVal(h[5]);
+                int a = 255;
+                if (h.length() >= 8) a = (_hexVal(h[6]) << 4) | _hexVal(h[7]);
+                return (a << 24) | (r << 16) | (g << 8) | b;
+            }
+        }
+        if (s.startsWith("rgb(") || s.startsWith("rgba(")) {
+            int lp = s.indexOf("(");
+            int rp = s.indexOf(")");
+            if (lp >= 0 && rp > lp) {
+                String[] parts = s.substring(lp + 1, rp).split(",");
+                int r = parts.length > 0 ? _parseNum(parts[0]) : 0;
+                int g = parts.length > 1 ? _parseNum(parts[1]) : 0;
+                int b = parts.length > 2 ? _parseNum(parts[2]) : 0;
+                return (255 << 24) | ((r & 255) << 16) | ((g & 255) << 8) | (b & 255);
+            }
+        }
+        return 0xFF000000;
+    }
+
+    static int px(String raw) { return _parseNum(raw); }
+}
+
+class _CssEngine {
+    List<_CssRule> rules;
+
+    _CssEngine() { rules = new List<_CssRule>(); }
+
+    private void _applyProp(_UiStyle st, String key, String val) {
+        String k = key.trim().toLowerCase();
+        String v = val.trim();
+        if (k.equals("background-color") || k.equals("background")) {
+            String vl = v.toLowerCase();
+            if (vl.startsWith("linear-gradient(")) {
+                int lp = v.indexOf("(");
+                int rp = v.indexOf(")");
+                if (lp >= 0 && rp > lp) {
+                    String[] parts = v.substring(lp + 1, rp).split(",");
+                    if (parts.length >= 3) {
+                        st.bg = _UiColor.parse(parts[1]); st.hasBg = true;
+                        st.bg2 = _UiColor.parse(parts[2]); st.hasGrad = true;
+                    } else if (parts.length == 2) {
+                        st.bg = _UiColor.parse(parts[0]); st.hasBg = true;
+                        st.bg2 = _UiColor.parse(parts[1]); st.hasGrad = true;
+                    }
+                }
+            } else {
+                st.bg = _UiColor.parse(v); st.hasBg = true; st.hasGrad = false;
+            }
+        } else if (k.equals("color")) {
+            st.fg = _UiColor.parse(v); st.hasFg = true;
+        } else if (k.equals("border-radius")) {
+            st.radius = _UiColor.px(v); st.hasRadius = true;
+        } else if (k.equals("border-color")) {
+            st.borderColor = _UiColor.parse(v); st.hasBorderColor = true;
+        } else if (k.equals("border-width")) {
+            st.borderWidth = _UiColor.px(v); st.hasBorderWidth = true;
+        } else if (k.equals("border")) {
+            String[] ps = v.split(" ");
+            for (int i = 0; i < ps.length; i++) {
+                String t = ps[i].trim();
+                if (t.length() == 0) continue;
+                if (t.endsWith("px") || (t[0] >= '0' && t[0] <= '9')) { st.borderWidth = _UiColor.px(t); st.hasBorderWidth = true; }
+                else if (t.startsWith("#") || t.startsWith("rgb")) { st.borderColor = _UiColor.parse(t); st.hasBorderColor = true; }
+            }
+        } else if (k.equals("padding")) {
+            String[] ps = v.split(" ");
+            List<String> nums = new List<String>();
+            for (int i = 0; i < ps.length; i++) if (ps[i].trim().length() > 0) nums.add(ps[i].trim());
+            if (nums.size() == 1) { st.padY = _UiColor.px(nums[0]); st.padX = st.padY; st.hasPad = true; }
+            else if (nums.size() >= 2) { st.padY = _UiColor.px(nums[0]); st.padX = _UiColor.px(nums[1]); st.hasPad = true; }
+        } else if (k.equals("margin")) {
+            st.margin = _UiColor.px(v); st.hasMargin = true;
+        } else if (k.equals("gap")) {
+            st.gap = _UiColor.px(v); st.hasGap = true;
+        } else if (k.equals("width")) {
+            st.width = _UiColor.px(v); st.hasWidth = true;
+        } else if (k.equals("height")) {
+            st.height = _UiColor.px(v); st.hasHeight = true;
+        } else if (k.equals("font-size")) {
+            st.fontSize = _UiColor.px(v); st.hasFontSize = true;
+        } else if (k.equals("font-weight")) {
+            String vl = v.toLowerCase();
+            st.bold = vl.equals("bold") || vl.equals("700") || vl.equals("600") || vl.equals("800");
+            st.hasBold = true;
+        } else if (k.equals("font-family")) {
+            st.fontName = v.replace("'", "").replace("\"", "").trim();
+            st.hasFontName = true;
+        } else if (k.equals("text-align")) {
+            String vl = v.toLowerCase();
+            if (vl.equals("center")) st.align = 1;
+            else if (vl.equals("right")) st.align = 2;
+            else st.align = 0;
+            st.hasAlign = true;
+        } else if (k.equals("box-shadow")) {
+            if (v.toLowerCase().equals("none")) { st.shadow = 0; st.hasShadow = true; }
+            else {
+                String[] ps = v.split(" ");
+                int maxP = 8;
+                for (int i = 0; i < ps.length; i++) {
+                    String t = ps[i].trim();
+                    if (t.length() > 0 && (t[0] >= '0' && t[0] <= '9')) {
+                        int pv = _UiColor.px(t);
+                        if (pv > maxP) maxP = pv;
+                    }
+                }
+                st.shadow = maxP; st.hasShadow = true;
+            }
+        } else if (k.equals("flex-direction")) {
+            st.isRow = v.toLowerCase().equals("row"); st.hasDir = true;
+        } else if (k.equals("align-items")) {
+            String vl = v.toLowerCase();
+            if (vl.equals("center")) st.alignItems = 1;
+            else if (vl.equals("end") || vl.equals("flex-end")) st.alignItems = 2;
+            else st.alignItems = 0;
+            st.hasAlignItems = true;
+        }
+    }
+
+    void parse(String cssText) {
+        if (cssText == null) return;
+        int n = cssText.length();
+        int i = 0;
+        while (i < n) {
+            int lb = cssText.indexOf("{");
+            // manual scan from i
+            while (i < n && cssText[i] != '{') {
+                if (cssText[i] == '/' && i + 1 < n && cssText[i + 1] == '*') {
+                    i += 2;
+                    while (i + 1 < n && !(cssText[i] == '*' && cssText[i + 1] == '/')) i++;
+                    i += 2;
+                    continue;
+                }
+                break;
+            }
+            int startSel = i;
+            while (i < n && cssText[i] != '{') i++;
+            if (i >= n) break;
+            String selRaw = cssText.substring(startSel, i).trim();
+            i++; // skip '{'
+            int startBody = i;
+            while (i < n && cssText[i] != '}') i++;
+            String body = cssText.substring(startBody, i);
+            if (i < n) i++; // skip '}'
+
+            _UiStyle st = new _UiStyle();
+            String[] decls = body.split(";");
+            for (int d = 0; d < decls.length; d++) {
+                String decl = decls[d].trim();
+                int col = decl.indexOf(":");
+                if (col > 0) _applyProp(st, decl.substring(0, col), decl.substring(col + 1, decl.length()));
+            }
+
+            String[] sels = selRaw.split(",");
+            for (int s = 0; s < sels.length; s++) {
+                String one = sels[s].trim();
+                if (one.length() == 0) continue;
+                String pseudo = "";
+                int pcol = one.indexOf(":");
+                if (pcol > 0) {
+                    pseudo = one.substring(pcol + 1, one.length()).trim().toLowerCase();
+                    one = one.substring(0, pcol).trim();
+                }
+                rules.add(new _CssRule(one, pseudo, st));
+            }
+        }
+    }
+
+    void resolve(String tag, String clsStr, String idStr, bool hovered, bool active, bool focused, _UiStyle out) {
+        // 1. Tag rules
+        for (int i = 0; i < rules.size(); i++) {
+            _CssRule r = rules[i];
+            if (r.pseudo.equals("") && r.selector.equals(tag)) out.copyFrom(r.style);
+        }
+        // 2. Class rules
+        if (clsStr != null && clsStr.length() > 0) {
+            String[] clss = clsStr.split(" ");
+            for (int c = 0; c < clss.length; c++) {
+                String cn = clss[c].trim();
+                if (cn.length() == 0) continue;
+                String dot = "." + cn;
+                for (int i = 0; i < rules.size(); i++) {
+                    _CssRule r = rules[i];
+                    if (r.pseudo.equals("") && r.selector.equals(dot)) out.copyFrom(r.style);
+                }
+            }
+        }
+        // 3. ID rules
+        if (idStr != null && idStr.length() > 0) {
+            String hash = "#" + idStr;
+            for (int i = 0; i < rules.size(); i++) {
+                _CssRule r = rules[i];
+                if (r.pseudo.equals("") && r.selector.equals(hash)) out.copyFrom(r.style);
+            }
+        }
+        // 4. Pseudo-classes (:hover, :active, :focus)
+        if (hovered) {
+            for (int i = 0; i < rules.size(); i++) {
+                _CssRule r = rules[i];
+                if (r.pseudo.equals("hover") && _matchSel(r.selector, tag, clsStr, idStr)) out.copyFrom(r.style);
+            }
+        }
+        if (active) {
+            for (int i = 0; i < rules.size(); i++) {
+                _CssRule r = rules[i];
+                if (r.pseudo.equals("active") && _matchSel(r.selector, tag, clsStr, idStr)) out.copyFrom(r.style);
+            }
+        }
+        if (focused) {
+            for (int i = 0; i < rules.size(); i++) {
+                _CssRule r = rules[i];
+                if (r.pseudo.equals("focus") && _matchSel(r.selector, tag, clsStr, idStr)) out.copyFrom(r.style);
+            }
+        }
+    }
+
+    private bool _matchSel(String sel, String tag, String clsStr, String idStr) {
+        if (sel.equals(tag)) return true;
+        if (idStr != null && idStr.length() > 0 && sel.equals("#" + idStr)) return true;
+        if (clsStr != null && clsStr.length() > 0 && sel.startsWith(".")) {
+            String target = sel.substring(1, sel.length());
+            String[] clss = clsStr.split(" ");
+            for (int i = 0; i < clss.length; i++) if (clss[i].trim().equals(target)) return true;
+        }
+        return false;
+    }
+}
+
+class UiElement {
+    String tag;
+    String clsName;
+    String idName;
+    String _text;
+    String _placeholder;
+    bool _checked;
+    int _value;
+    _UiStyle inlineStyle;
+    List<UiElement> children;
+    _CssEngine _css;
+
+    // Layout & interaction state
+    int rx; int ry; int rw; int rh;
+    bool hovered;
+    bool pressed;
+    bool focused;
+    bool _clicked;
+    bool _changed;
+    bool _submitted;
+
+    UiElement(String t, _CssEngine cssEngine) {
+        tag = t;
+        clsName = "";
+        idName = "";
+        _text = "";
+        _placeholder = "";
+        _checked = false;
+        _value = 0;
+        inlineStyle = new _UiStyle();
+        children = new List<UiElement>();
+        _css = cssEngine;
+        rx = 0; ry = 0; rw = 0; rh = 0;
+        hovered = false; pressed = false; focused = false;
+        _clicked = false; _changed = false; _submitted = false;
+        _initDefaults(t);
+    }
+
+    private void _initDefaults(String t) {
+        if (t.equals("window")) {
+            inlineStyle.bg = 0xFF09090B; inlineStyle.hasBg = true;
+            inlineStyle.padX = 24; inlineStyle.padY = 24; inlineStyle.hasPad = true;
+            inlineStyle.gap = 14; inlineStyle.hasGap = true;
+        } else if (t.equals("card")) {
+            inlineStyle.bg = 0xFF18181B; inlineStyle.hasBg = true;
+            inlineStyle.borderColor = 0xFF27272A; inlineStyle.hasBorderColor = true;
+            inlineStyle.borderWidth = 1; inlineStyle.hasBorderWidth = true;
+            inlineStyle.radius = 16; inlineStyle.hasRadius = true;
+            inlineStyle.padX = 20; inlineStyle.padY = 20; inlineStyle.hasPad = true;
+            inlineStyle.gap = 12; inlineStyle.hasGap = true;
+            inlineStyle.shadow = 14; inlineStyle.hasShadow = true;
+        } else if (t.equals("row")) {
+            inlineStyle.isRow = true; inlineStyle.hasDir = true;
+            inlineStyle.gap = 12; inlineStyle.hasGap = true;
+        } else if (t.equals("column")) {
+            inlineStyle.gap = 10; inlineStyle.hasGap = true;
+        } else if (t.equals("title")) {
+            inlineStyle.fontSize = 24; inlineStyle.hasFontSize = true;
+            inlineStyle.bold = true; inlineStyle.hasBold = true;
+            inlineStyle.fg = 0xFFFAFAFA; inlineStyle.hasFg = true;
+        } else if (t.equals("label")) {
+            inlineStyle.fontSize = 15; inlineStyle.hasFontSize = true;
+            inlineStyle.fg = 0xFFE4E4E7; inlineStyle.hasFg = true;
+        } else if (t.equals("button")) {
+            inlineStyle.bg = 0xFF6366F1; inlineStyle.hasBg = true;
+            inlineStyle.hoverBg = 0xFF4F46E5; inlineStyle.hasHoverBg = true;
+            inlineStyle.activeBg = 0xFF4338CA; inlineStyle.hasActiveBg = true;
+            inlineStyle.fg = 0xFFFFFFFF; inlineStyle.hasFg = true;
+            inlineStyle.radius = 10; inlineStyle.hasRadius = true;
+            inlineStyle.padX = 20; inlineStyle.padY = 10; inlineStyle.hasPad = true;
+            inlineStyle.bold = true; inlineStyle.hasBold = true;
+            inlineStyle.align = 1; inlineStyle.hasAlign = true;
+            inlineStyle.shadow = 8; inlineStyle.hasShadow = true;
+        } else if (t.equals("input")) {
+            inlineStyle.bg = 0xFF18181B; inlineStyle.hasBg = true;
+            inlineStyle.borderColor = 0xFF3F3F46; inlineStyle.hasBorderColor = true;
+            inlineStyle.borderWidth = 1; inlineStyle.hasBorderWidth = true;
+            inlineStyle.fg = 0xFFFAFAFA; inlineStyle.hasFg = true;
+            inlineStyle.radius = 10; inlineStyle.hasRadius = true;
+            inlineStyle.padX = 14; inlineStyle.padY = 10; inlineStyle.hasPad = true;
+            inlineStyle.width = 280; inlineStyle.hasWidth = true;
+        } else if (t.equals("badge")) {
+            inlineStyle.bg = 0xFF27272A; inlineStyle.hasBg = true;
+            inlineStyle.fg = 0xFFA5B4FC; inlineStyle.hasFg = true;
+            inlineStyle.radius = 999; inlineStyle.hasRadius = true;
+            inlineStyle.padX = 12; inlineStyle.padY = 4; inlineStyle.hasPad = true;
+            inlineStyle.fontSize = 12; inlineStyle.hasFontSize = true;
+            inlineStyle.bold = true; inlineStyle.hasBold = true;
+        } else if (t.equals("progress")) {
+            inlineStyle.bg = 0xFF27272A; inlineStyle.hasBg = true;
+            inlineStyle.bg2 = 0xFF6366F1; inlineStyle.hasGrad = true;
+            inlineStyle.radius = 999; inlineStyle.hasRadius = true;
+            inlineStyle.height = 10; inlineStyle.hasHeight = true;
+            inlineStyle.width = 280; inlineStyle.hasWidth = true;
+        } else if (t.equals("toggle")) {
+            inlineStyle.fg = 0xFFE4E4E7; inlineStyle.hasFg = true;
+            inlineStyle.bg = 0xFF6366F1; inlineStyle.hasBg = true;
+        } else if (t.equals("divider")) {
+            inlineStyle.bg = 0xFF27272A; inlineStyle.hasBg = true;
+            inlineStyle.height = 1; inlineStyle.hasHeight = true;
+        }
+    }
+
+    // ---- Child builders ----
+    UiElement add(UiElement child) { children.add(child); return this; }
+    UiElement card() { UiElement e = new UiElement("card", _css); children.add(e); return e; }
+    UiElement row() { UiElement e = new UiElement("row", _css); children.add(e); return e; }
+    UiElement column() { UiElement e = new UiElement("column", _css); children.add(e); return e; }
+    UiElement title(String t) { UiElement e = new UiElement("title", _css); e._text = t; children.add(e); return e; }
+    UiElement label(String t) { UiElement e = new UiElement("label", _css); e._text = t; children.add(e); return e; }
+    UiElement button(String t) { UiElement e = new UiElement("button", _css); e._text = t; children.add(e); return e; }
+    UiElement input(String placeholder) { UiElement e = new UiElement("input", _css); e._placeholder = placeholder; children.add(e); return e; }
+    UiElement toggle(String labelText, bool initial) { UiElement e = new UiElement("toggle", _css); e._text = labelText; e._checked = initial; children.add(e); return e; }
+    UiElement badge(String t) { UiElement e = new UiElement("badge", _css); e._text = t; children.add(e); return e; }
+    UiElement progress(int percent) { UiElement e = new UiElement("progress", _css); e._value = percent; children.add(e); return e; }
+    UiElement divider() { UiElement e = new UiElement("divider", _css); children.add(e); return e; }
+    UiElement spacer(int px) { UiElement e = new UiElement("spacer", _css); e.inlineStyle.width = px; e.inlineStyle.height = px; e.inlineStyle.hasWidth = true; e.inlineStyle.hasHeight = true; children.add(e); return e; }
+
+    // ---- CSS Class & ID ----
+    UiElement cls(String c) { clsName = c; return this; }
+    UiElement id(String i) { idName = i; return this; }
+
+    // ---- Inline Fluent Styling (Mode 2) ----
+    UiElement bg(String c) { inlineStyle.bg = _UiColor.parse(c); inlineStyle.hasBg = true; inlineStyle.hasGrad = false; return this; }
+    UiElement gradient(String c1, String c2) { inlineStyle.bg = _UiColor.parse(c1); inlineStyle.bg2 = _UiColor.parse(c2); inlineStyle.hasBg = true; inlineStyle.hasGrad = true; return this; }
+    UiElement hoverBg(String c) { inlineStyle.hoverBg = _UiColor.parse(c); inlineStyle.hasHoverBg = true; return this; }
+    UiElement activeBg(String c) { inlineStyle.activeBg = _UiColor.parse(c); inlineStyle.hasActiveBg = true; return this; }
+    UiElement color(String c) { inlineStyle.fg = _UiColor.parse(c); inlineStyle.hasFg = true; return this; }
+    UiElement radius(int r) { inlineStyle.radius = r; inlineStyle.hasRadius = true; return this; }
+    UiElement border(String c, int w) { inlineStyle.borderColor = _UiColor.parse(c); inlineStyle.borderWidth = w; inlineStyle.hasBorderColor = true; inlineStyle.hasBorderWidth = true; return this; }
+    UiElement padding(int p) { inlineStyle.padX = p; inlineStyle.padY = p; inlineStyle.hasPad = true; return this; }
+    UiElement paddingXY(int px, int py) { inlineStyle.padX = px; inlineStyle.padY = py; inlineStyle.hasPad = true; return this; }
+    UiElement margin(int m) { inlineStyle.margin = m; inlineStyle.hasMargin = true; return this; }
+    UiElement gap(int g) { inlineStyle.gap = g; inlineStyle.hasGap = true; return this; }
+    UiElement width(int w) { inlineStyle.width = w; inlineStyle.hasWidth = true; return this; }
+    UiElement height(int h) { inlineStyle.height = h; inlineStyle.hasHeight = true; return this; }
+    UiElement size(int w, int h) { inlineStyle.width = w; inlineStyle.height = h; inlineStyle.hasWidth = true; inlineStyle.hasHeight = true; return this; }
+    UiElement fontSize(int sz) { inlineStyle.fontSize = sz; inlineStyle.hasFontSize = true; return this; }
+    UiElement bold() { inlineStyle.bold = true; inlineStyle.hasBold = true; return this; }
+    UiElement font(String name) { inlineStyle.fontName = name; inlineStyle.hasFontName = true; return this; }
+    UiElement align(String a) {
+        String al = a.toLowerCase();
+        if (al.equals("center")) inlineStyle.align = 1;
+        else if (al.equals("right")) inlineStyle.align = 2;
+        else inlineStyle.align = 0;
+        inlineStyle.hasAlign = true;
+        return this;
+    }
+    UiElement shadow(int s) { inlineStyle.shadow = s; inlineStyle.hasShadow = true; return this; }
+    UiElement asRow() { inlineStyle.isRow = true; inlineStyle.hasDir = true; return this; }
+    UiElement asColumn() { inlineStyle.isRow = false; inlineStyle.hasDir = true; return this; }
+    UiElement center() { inlineStyle.alignItems = 1; inlineStyle.hasAlignItems = true; return this; }
+
+    // ---- State & Events ----
+    String text() { return _text; }
+    UiElement setText(String t) { _text = t; return this; }
+    bool checked() { return _checked; }
+    UiElement setChecked(bool b) { _checked = b; return this; }
+    int value() { return _value; }
+    UiElement setValue(int v) { if (v < 0) v = 0; if (v > 100) v = 100; _value = v; return this; }
+    bool clicked() { bool r = _clicked; _clicked = false; return r; }
+    bool changed() { bool r = _changed; _changed = false; return r; }
+    bool submitted() { bool r = _submitted; _submitted = false; return r; }
+
+    _UiStyle computeStyle() {
+        _UiStyle s = new _UiStyle();
+        s.copyFrom(inlineStyle);
+        _css.resolve(tag, clsName, idName, hovered, pressed, focused, s);
+        if (hovered && inlineStyle.hasHoverBg && !pressed) { s.bg = inlineStyle.hoverBg; s.hasBg = true; s.hasGrad = false; }
+        if (pressed && inlineStyle.hasActiveBg) { s.bg = inlineStyle.activeBg; s.hasBg = true; s.hasGrad = false; }
+        return s;
+    }
+}
+
+class UiApp {
+    int _u32; int _g32; int _k32; int _dwm;
+    int _hwnd;
+    int _w; int _h;
+    int _memDC; int _bmp; int _bits;
+    int _bufW; int _bufH;
+    _CssEngine _css;
+    UiElement root;
+    UiElement _focused;
+    bool _prevDown;
+    int _scrollY;
+    int _cursorArrow;
+    int _cursorHand;
+
+    UiApp(String titleStr, int w, int h) {
+        _u32 = __winapi(14, (int) "user32.dll");
+        _g32 = __winapi(14, (int) "gdi32.dll");
+        _k32 = __winapi(14, (int) "kernel32.dll");
+        _dwm = __winapi(14, (int) "dwmapi.dll");
+        _w = w; _h = h;
+        _bufW = 0; _bufH = 0; _memDC = 0; _bmp = 0; _bits = 0;
+        _css = new _CssEngine();
+        root = new UiElement("window", _css);
+        _focused = null;
+        _prevDown = false;
+        _scrollY = 0;
+        _createWindow(titleStr, w, h);
+    }
+
+    private void _poke16(int a, int v) { __poke8(a, v & 255); __poke8(a + 1, (v >> 8) & 255); }
+    private void _poke32(int a, int v) {
+        __poke8(a, v & 255); __poke8(a + 1, (v >> 8) & 255);
+        __poke8(a + 2, (v >> 16) & 255); __poke8(a + 3, (v >> 24) & 255);
+    }
+    private int _peek32s(int a) {
+        int v = __peek8(a) | (__peek8(a + 1) << 8) | (__peek8(a + 2) << 16) | (__peek8(a + 3) << 24);
+        if ((v & 0x80000000) != 0) return v | (-1 << 32);
+        return v;
+    }
+
+    private void _createWindow(String titleStr, int w, int h) {
+        int fGetMod = __winapi(15, _k32, (int) "GetModuleHandleA");
+        int fDefProc = __winapi(15, _u32, (int) "DefWindowProcA");
+        int fLoadCur = __winapi(15, _u32, (int) "LoadCursorA");
+        int fReg = __winapi(15, _u32, (int) "RegisterClassExA");
+        int fCreate = __winapi(15, _u32, (int) "CreateWindowExA");
+        int fShow = __winapi(15, _u32, (int) "ShowWindow");
+        int fUpd = __winapi(15, _u32, (int) "UpdateWindow");
+
+        int hInst = __call(fGetMod, 0);
+        _cursorArrow = __call(fLoadCur, 0, 32512);
+        _cursorHand = __call(fLoadCur, 0, 32649);
+        String clsName = "AdaCUiWindowClass";
+
+        int wc = __alloc_atomic(80);
+        _poke32(wc + 0, 80);
+        _poke32(wc + 4, 3);
+        __poke64(wc + 8, fDefProc);
+        __poke64(wc + 24, hInst);
+        __poke64(wc + 40, _cursorArrow);
+        __poke64(wc + 64, (int) clsName);
+        __call(fReg, wc);
+
+        // WS_OVERLAPPEDWINDOW = 0x00CF0000, CW_USEDEFAULT = 0x80000000
+        _hwnd = __call(fCreate, 0, (int) clsName, (int) titleStr, 0x00CF0000, 0x80000000, 0x80000000, w, h, 0, 0, hInst, 0);
+
+        if (_dwm != 0 && _hwnd != 0) {
+            int fDwm = __winapi(15, _dwm, (int) "DwmSetWindowAttribute");
+            if (fDwm != 0) {
+                int dark = __alloc_atomic(4);
+                _poke32(dark, 1);
+                __call(fDwm, _hwnd, 20, dark, 4); // DWMWA_USE_IMMERSIVE_DARK_MODE = 20
+            }
+        }
+        if (_hwnd != 0) {
+            __call(fShow, _hwnd, 5);
+            __call(fUpd, _hwnd);
+        }
+    }
+
+    // ---- Mode 1: Literal CSS ----
+    UiApp css(String cssRules) { _css.parse(cssRules); return this; }
+    UiApp loadCss(String filePath) {
+        if (Fs.exists(filePath)) {
+            String txt = Fs.readToString(filePath);
+            if (txt != null) _css.parse(txt);
+        }
+        return this;
+    }
+
+    // ---- Root widget builders ----
+    UiElement card() { return root.card(); }
+    UiElement row() { return root.row(); }
+    UiElement column() { return root.column(); }
+    UiElement title(String t) { return root.title(t); }
+    UiElement label(String t) { return root.label(t); }
+    UiElement button(String t) { return root.button(t); }
+    UiElement input(String ph) { return root.input(ph); }
+    UiElement toggle(String l, bool init) { return root.toggle(l, init); }
+    UiElement badge(String t) { return root.badge(t); }
+    UiElement progress(int pct) { return root.progress(pct); }
+    UiElement divider() { return root.divider(); }
+    UiElement spacer(int px) { return root.spacer(px); }
+
+    // ---- DIB Backbuffer ----
+    private void _ensureBuffer(int w, int h) {
+        if (w <= 0) w = 1;
+        if (h <= 0) h = 1;
+        if (_memDC != 0 && _bufW == w && _bufH == h) return;
+        int fDelDC = __winapi(15, _g32, (int) "DeleteDC");
+        int fDelObj = __winapi(15, _g32, (int) "DeleteObject");
+        if (_bmp != 0) __call(fDelObj, _bmp);
+        if (_memDC != 0) __call(fDelDC, _memDC);
+
+        int fGetDC = __winapi(15, _u32, (int) "GetDC");
+        int fRelDC = __winapi(15, _u32, (int) "ReleaseDC");
+        int fCompDC = __winapi(15, _g32, (int) "CreateCompatibleDC");
+        int fDIB = __winapi(15, _g32, (int) "CreateDIBSection");
+        int fSel = __winapi(15, _g32, (int) "SelectObject");
+
+        int hdc = __call(fGetDC, _hwnd);
+        _memDC = __call(fCompDC, hdc);
+        int bmi = __alloc_atomic(44);
+        _poke32(bmi + 0, 40);
+        _poke32(bmi + 4, w);
+        _poke32(bmi + 8, 0 - h); // top-down
+        _poke16(bmi + 12, 1);
+        _poke16(bmi + 14, 32);
+        int pBits = __alloc_atomic(8);
+        _bmp = __call(fDIB, _memDC, bmi, 0, pBits, 0, 0);
+        _bits = __peek64(pBits);
+        __call(fSel, _memDC, _bmp);
+        __call(fRelDC, _hwnd, hdc);
+        _bufW = w; _bufH = h;
+    }
+
+    // ---- Fast 32-bit BGRA Pixel Primitives ----
+    private void _blendPixel(int x, int y, int argb) {
+        if (x < 0 || y < 0 || x >= _bufW || y >= _bufH) return;
+        int a = (argb >> 24) & 255;
+        if (a == 0) return;
+        int addr = _bits + (y * _bufW + x) * 4;
+        if (a == 255) { _poke32(addr, argb & 0x00FFFFFF); return; }
+        int dst = _peek32s(addr);
+        int sr = (argb >> 16) & 255;
+        int sg = (argb >> 8) & 255;
+        int sb = argb & 255;
+        int dr = (dst >> 16) & 255;
+        int dg = (dst >> 8) & 255;
+        int db = dst & 255;
+        int ia = 255 - a;
+        int rr = (sr * a + dr * ia) / 255;
+        int rg = (sg * a + dg * ia) / 255;
+        int rb = (sb * a + db * ia) / 255;
+        _poke32(addr, (rr << 16) | (rg << 8) | rb);
+    }
+
+    private int _lerpColor(int c1, int c2, int t, int maxT) {
+        if (maxT <= 0) return c1;
+        int a1 = (c1 >> 24) & 255; int r1 = (c1 >> 16) & 255; int g1 = (c1 >> 8) & 255; int b1 = c1 & 255;
+        int a2 = (c2 >> 24) & 255; int r2 = (c2 >> 16) & 255; int g2 = (c2 >> 8) & 255; int b2 = c2 & 255;
+        int a = a1 + (a2 - a1) * t / maxT;
+        int r = r1 + (r2 - r1) * t / maxT;
+        int g = g1 + (g2 - g1) * t / maxT;
+        int b = b1 + (b2 - b1) * t / maxT;
+        return (a << 24) | (r << 16) | (g << 8) | b;
+    }
+
+    private int _isqrt(int n) {
+        if (n <= 0) return 0;
+        int x = n;
+        int y = (x + 1) / 2;
+        while (y < x) { x = y; y = (x + n / x) / 2; }
+        return x;
+    }
+
+    // Anti-aliased rounded rectangle with optional gradient and border
+    private void _drawRoundRect(int x, int y, int w, int h, int rad, int c1, int c2, bool grad, int bColor, int bWidth) {
+        if (w <= 0 || h <= 0) return;
+        int maxR = (w < h ? w : h) / 2;
+        if (rad > maxR) rad = maxR;
+        if (rad < 0) rad = 0;
+
+        int x0 = x < 0 ? 0 : x;
+        int y0 = y < 0 ? 0 : y;
+        int x1 = x + w > _bufW ? _bufW : x + w;
+        int y1 = y + h > _bufH ? _bufH : y + h;
+
+        int rSqOuter = rad * rad;
+        int rInner = rad - bWidth;
+        if (rInner < 0) rInner = 0;
+
+        for (int py = y0; py < y1; py++) {
+            int ly = py - y;
+            int dy = 0;
+            if (ly < rad) dy = rad - ly - 1;
+            else if (ly >= h - rad) dy = ly - (h - rad);
+            int dySq = dy * dy;
+
+            for (int px = x0; px < x1; px++) {
+                int lx = px - x;
+                int dx = 0;
+                if (lx < rad) dx = rad - lx - 1;
+                else if (lx >= w - rad) dx = lx - (w - rad);
+
+                int col = grad ? _lerpColor(c1, c2, lx, w) : c1;
+                if (dx == 0 && dy == 0) {
+                    if (bWidth > 0 && (lx < bWidth || lx >= w - bWidth || ly < bWidth || ly >= h - bWidth)) {
+                        _blendPixel(px, py, bColor);
+                    } else if (((col >> 24) & 255) > 0) {
+                        _blendPixel(px, py, col);
+                    }
+                    continue;
+                }
+
+                // 256x fixed-point distance for smooth AA
+                int dist = _isqrt((dx * 16 + 8) * (dx * 16 + 8) + (dy * 16 + 8) * (dy * 16 + 8));
+                int outer = rad * 16;
+                if (dist >= outer + 12) continue;
+                int cov = 255;
+                if (dist > outer - 12) {
+                    cov = (outer + 12 - dist) * 255 / 24;
+                    if (cov < 0) cov = 0;
+                    if (cov > 255) cov = 255;
+                }
+                int drawCol = col;
+                if (bWidth > 0 && dist >= rInner * 16 - 8) drawCol = bColor;
+                int ca = ((drawCol >> 24) & 255) * cov / 255;
+                if (ca > 0) _blendPixel(px, py, (ca << 24) | (drawCol & 0x00FFFFFF));
+            }
+        }
+    }
+
+    private void _drawShadow(int x, int y, int w, int h, int rad, int blur) {
+        if (blur <= 0) return;
+        int steps = blur > 12 ? 6 : 4;
+        for (int s = steps; s >= 1; s--) {
+            int pad = s * blur / steps;
+            int alpha = (steps - s + 1) * 14 / steps;
+            _drawRoundRect(x - pad / 2, y + pad / 2, w + pad, h + pad, rad + pad / 2, (alpha << 24), 0, false, 0, 0);
+        }
+    }
+
+    // ---- Text measurement & ClearType rendering ----
+    private int _makeFont(int sz, bool isBold, String name) {
+        int fCreateFont = __winapi(15, _g32, (int) "CreateFontA");
+        int wt = isBold ? 700 : 400;
+        // CLEARTYPE_QUALITY = 5
+        return __call(fCreateFont, 0 - sz, 0, 0, 0, wt, 0, 0, 0, 1, 0, 0, 5, 0, (int) name);
+    }
+
+    private int _measureW(String txt, int sz, bool isBold, String fname) {
+        if (txt == null || txt.length() == 0) return 0;
+        int fSel = __winapi(15, _g32, (int) "SelectObject");
+        int fDel = __winapi(15, _g32, (int) "DeleteObject");
+        int fExt = __winapi(15, _g32, (int) "GetTextExtentPoint32A");
+        int font = _makeFont(sz, isBold, fname);
+        int old = __call(fSel, _memDC, font);
+        int szBuf = __alloc_atomic(8);
+        __call(fExt, _memDC, (int) txt, __strlen(txt), szBuf);
+        __call(fSel, _memDC, old);
+        __call(fDel, font);
+        return _peek32s(szBuf);
+    }
+
+    private void _drawText(String txt, int x, int y, int w, int h, _UiStyle st) {
+        if (txt == null || txt.length() == 0) return;
+        int fSel = __winapi(15, _g32, (int) "SelectObject");
+        int fDel = __winapi(15, _g32, (int) "DeleteObject");
+        int fBk = __winapi(15, _g32, (int) "SetBkMode");
+        int fTc = __winapi(15, _g32, (int) "SetTextColor");
+        int fDraw = __winapi(15, _u32, (int) "DrawTextA");
+
+        int font = _makeFont(st.fontSize, st.bold, st.fontName);
+        int old = __call(fSel, _memDC, font);
+        __call(fBk, _memDC, 1); // TRANSPARENT
+        int rgb = st.fg & 0x00FFFFFF;
+        int bgr = ((rgb & 0xFF) << 16) | (rgb & 0xFF00) | ((rgb >> 16) & 0xFF);
+        __call(fTc, _memDC, bgr);
+
+        int rc = __alloc_atomic(16);
+        _poke32(rc + 0, x); _poke32(rc + 4, y);
+        _poke32(rc + 8, x + w); _poke32(rc + 12, y + h);
+        // DT_SINGLELINE (0x20) | DT_VCENTER (0x04) | DT_NOPREFIX (0x800) | align
+        int flags = 0x20 | 0x04 | 0x800;
+        if (st.align == 1) flags = flags | 1;
+        else if (st.align == 2) flags = flags | 2;
+        __call(fDraw, _memDC, (int) txt, __strlen(txt), rc, flags);
+        __call(fSel, _memDC, old);
+        __call(fDel, font);
+    }
+
+    // ---- Layout Engine ----
+    private void _measure(UiElement el, int availW) {
+        _UiStyle st = el.computeStyle();
+        int padX = st.padX;
+        int padY = st.padY;
+        if (el.tag.equals("title") || el.tag.equals("label") || el.tag.equals("button") || el.tag.equals("badge")) {
+            int tw = _measureW(el._text, st.fontSize, st.bold, st.fontName);
+            el.rw = st.hasWidth ? st.width : (tw + padX * 2);
+            el.rh = st.hasHeight ? st.height : (st.fontSize + 8 + padY * 2);
+            return;
+        }
+        if (el.tag.equals("input")) {
+            el.rw = st.hasWidth ? st.width : 280;
+            el.rh = st.hasHeight ? st.height : (st.fontSize + 8 + padY * 2);
+            return;
+        }
+        if (el.tag.equals("toggle")) {
+            int tw = _measureW(el._text, st.fontSize, st.bold, st.fontName);
+            el.rw = st.hasWidth ? st.width : (48 + 10 + tw);
+            el.rh = st.hasHeight ? st.height : 28;
+            return;
+        }
+        if (el.tag.equals("progress")) {
+            el.rw = st.hasWidth ? st.width : 280;
+            el.rh = st.hasHeight ? st.height : 10;
+            return;
+        }
+        if (el.tag.equals("divider")) {
+            el.rw = st.hasWidth ? st.width : availW;
+            el.rh = st.hasHeight ? st.height : 1;
+            return;
+        }
+        if (el.tag.equals("spacer")) {
+            el.rw = st.width; el.rh = st.height;
+            return;
+        }
+
+        // Container (window, card, row, column)
+        int innerW = (st.hasWidth ? st.width : availW) - padX * 2;
+        if (innerW < 0) innerW = 0;
+        int sumMain = 0;
+        int maxCross = 0;
+        for (int i = 0; i < el.children.size(); i++) {
+            UiElement ch = el.children[i];
+            _measure(ch, innerW);
+            _UiStyle cst = ch.computeStyle();
+            int m = cst.margin * 2;
+            if (st.isRow) {
+                sumMain = sumMain + ch.rw + m;
+                if (i > 0) sumMain = sumMain + st.gap;
+                if (ch.rh + m > maxCross) maxCross = ch.rh + m;
+            } else {
+                sumMain = sumMain + ch.rh + m;
+                if (i > 0) sumMain = sumMain + st.gap;
+                if (ch.rw + m > maxCross) maxCross = ch.rw + m;
+            }
+        }
+        if (st.hasWidth) el.rw = st.width;
+        else if (el.tag.equals("window")) el.rw = availW;
+        else if (el.tag.equals("card") || el.tag.equals("column")) el.rw = maxCross + padX * 2 > availW ? availW : (el.tag.equals("card") ? availW : maxCross + padX * 2);
+        else el.rw = (st.isRow ? sumMain : maxCross) + padX * 2;
+
+        if (st.hasHeight) el.rh = st.height;
+        else el.rh = (st.isRow ? maxCross : sumMain) + padY * 2;
+    }
+
+    private void _layout(UiElement el, int x, int y) {
+        el.rx = x; el.ry = y;
+        _UiStyle st = el.computeStyle();
+        int cx = x + st.padX;
+        int cy = y + st.padY;
+        for (int i = 0; i < el.children.size(); i++) {
+            UiElement ch = el.children[i];
+            _UiStyle cst = ch.computeStyle();
+            int m = cst.margin;
+            if (st.isRow) {
+                int oy = cy + m;
+                if (st.alignItems == 1) oy = y + (el.rh - ch.rh) / 2;
+                _layout(ch, cx + m, oy);
+                cx = cx + ch.rw + m * 2 + st.gap;
+            } else {
+                int ox = cx + m;
+                if (st.alignItems == 1) ox = x + (el.rw - ch.rw) / 2;
+                _layout(ch, ox, cy + m);
+                cy = cy + ch.rh + m * 2 + st.gap;
+            }
+        }
+    }
+
+    // ---- Rendering ----
+    private void _paint(UiElement el) {
+        _UiStyle st = el.computeStyle();
+        if (el.tag.equals("spacer")) return;
+
+        if (el.tag.equals("toggle")) {
+            int trackCol = el._checked ? (st.hasBg ? st.bg : 0xFF6366F1) : 0xFF3F3F46;
+            _drawRoundRect(el.rx, el.ry + 2, 46, 24, 12, trackCol, 0, false, 0, 0);
+            int knobX = el._checked ? el.rx + 24 : el.rx + 3;
+            _drawRoundRect(knobX, el.ry + 5, 18, 18, 9, 0xFFFFFFFF, 0, false, 0, 0);
+            _drawText(el._text, el.rx + 56, el.ry, el.rw - 56, el.rh, st);
+            return;
+        }
+
+        if (el.tag.equals("progress")) {
+            _drawRoundRect(el.rx, el.ry, el.rw, el.rh, st.radius, st.bg, 0, false, 0, 0);
+            int fw = el.rw * el._value / 100;
+            if (fw > 0) _drawRoundRect(el.rx, el.ry, fw, el.rh, st.radius, st.bg2, 0xFFA855F7, true, 0, 0);
+            return;
+        }
+
+        if (st.shadow > 0) _drawShadow(el.rx, el.ry, el.rw, el.rh, st.radius, st.shadow);
+        if (st.hasBg || st.hasBorderWidth) {
+            _drawRoundRect(el.rx, el.ry, el.rw, el.rh, st.radius, st.bg, st.bg2, st.hasGrad, st.borderColor, st.borderWidth);
+        }
+
+        if (el.tag.equals("input")) {
+            String show = el._text.length() > 0 ? el._text : el._placeholder;
+            if (el._text.length() == 0) {
+                _UiStyle phSt = new _UiStyle();
+                phSt.copyFrom(st);
+                phSt.fg = 0xFF71717A;
+                _drawText(show, el.rx + st.padX, el.ry, el.rw - st.padX * 2, el.rh, phSt);
+            } else {
+                String txt = el.focused ? (el._text + "|") : el._text;
+                _drawText(txt, el.rx + st.padX, el.ry, el.rw - st.padX * 2, el.rh, st);
+            }
+            if (el.focused) {
+                _drawRoundRect(el.rx, el.ry, el.rw, el.rh, st.radius, 0, 0, false, 0xFF6366F1, 2);
+            }
+            return;
+        }
+
+        if (el._text.length() > 0 && (el.tag.equals("title") || el.tag.equals("label") || el.tag.equals("button") || el.tag.equals("badge"))) {
+            int tx = st.align == 1 ? el.rx : el.rx + st.padX;
+            int tw = st.align == 1 ? el.rw : el.rw - st.padX * 2;
+            _drawText(el._text, tx, el.ry, tw, el.rh, st);
+        }
+
+        for (int i = 0; i < el.children.size(); i++) _paint(el.children[i]);
+    }
+
+    private void _hitTest(UiElement el, int mx, int my, bool down, bool released) {
+        bool inside = mx >= el.rx && mx < el.rx + el.rw && my >= el.ry && my < el.ry + el.rh;
+        el.hovered = inside;
+        if (el.tag.equals("button") || el.tag.equals("input") || el.tag.equals("toggle")) {
+            if (inside && down && !_prevDown) el.pressed = true;
+            if (released) {
+                if (inside && el.pressed) {
+                    if (el.tag.equals("button")) el._clicked = true;
+                    else if (el.tag.equals("toggle")) { el._checked = !el._checked; el._changed = true; }
+                    else if (el.tag.equals("input")) {
+                        if (_focused != null && _focused != el) _focused.focused = false;
+                        el.focused = true;
+                        _focused = el;
+                    }
+                }
+                el.pressed = false;
+            }
+        }
+        if (released && !inside && el.tag.equals("input") && el.focused) {
+            el.focused = false;
+            if (_focused == el) _focused = null;
+        }
+        for (int i = 0; i < el.children.size(); i++) _hitTest(el.children[i], mx, my, down, released);
+    }
+
+    // ---- Event Loop (call in `while (app.loop())`) ----
+    bool loop() {
+        int fIsWin = __winapi(15, _u32, (int) "IsWindow");
+        if (__call(fIsWin, _hwnd) == 0) return false;
+
+        int fPeek = __winapi(15, _u32, (int) "PeekMessageA");
+        int fTrans = __winapi(15, _u32, (int) "TranslateMessage");
+        int fDisp = __winapi(15, _u32, (int) "DispatchMessageA");
+        int msg = __alloc_atomic(48);
+
+        while (__call(fPeek, msg, 0, 0, 0, 1) != 0) {
+            int mtype = _peek32s(msg + 8);
+            if (mtype == 0x0102 && _focused != null) { // WM_CHAR
+                int ch = __peek64(msg + 16) & 0xFF;
+                if (ch == 8) {
+                    int ln = _focused._text.length();
+                    if (ln > 0) { _focused._text = _focused._text.substring(0, ln - 1); _focused._changed = true; }
+                } else if (ch == 13) {
+                    _focused._submitted = true;
+                } else if (ch >= 32 && ch < 127) {
+                    int tmp = __alloc_atomic(2);
+                    __poke8(tmp, ch);
+                    _focused._text = _focused._text + __str_from(tmp, 1);
+                    _focused._changed = true;
+                }
+            } else if (mtype == 0x020A) { // WM_MOUSEWHEEL
+                int delta = (_peek32s(msg + 16) >> 16);
+                _scrollY = _scrollY + (delta > 0 ? 30 : -30);
+                if (_scrollY > 0) _scrollY = 0;
+            }
+            __call(fTrans, msg);
+            __call(fDisp, msg);
+        }
+        if (__call(fIsWin, _hwnd) == 0) return false;
+
+        // Client size
+        int fRect = __winapi(15, _u32, (int) "GetClientRect");
+        int rc = __alloc_atomic(16);
+        __call(fRect, _hwnd, rc);
+        int cw = _peek32s(rc + 8);
+        int ch = _peek32s(rc + 12);
+        if (cw <= 0) cw = _w;
+        if (ch <= 0) ch = _h;
+
+        // Mouse state
+        int fCur = __winapi(15, _u32, (int) "GetCursorPos");
+        int fS2C = __winapi(15, _u32, (int) "ScreenToClient");
+        int fKey = __winapi(15, _u32, (int) "GetAsyncKeyState");
+        int pt = __alloc_atomic(8);
+        __call(fCur, pt);
+        __call(fS2C, _hwnd, pt);
+        int mx = _peek32s(pt);
+        int my = _peek32s(pt + 4);
+        bool down = (__call(fKey, 1) & 0x8000) != 0;
+        bool released = _prevDown && !down;
+
+        _ensureBuffer(cw, ch);
+        _measure(root, cw);
+        if (root.rh < ch) root.rh = ch;
+        _layout(root, 0, _scrollY);
+        _hitTest(root, mx, my, down, released);
+        _prevDown = down;
+
+        // Paint & blit
+        _paint(root);
+        int fGetDC = __winapi(15, _u32, (int) "GetDC");
+        int fRelDC = __winapi(15, _u32, (int) "ReleaseDC");
+        int fBitBlt = __winapi(15, _g32, (int) "BitBlt");
+        int hdc = __call(fGetDC, _hwnd);
+        __call(fBitBlt, hdc, 0, 0, cw, ch, _memDC, 0, 0, 0x00CC0020);
+        __call(fRelDC, _hwnd, hdc);
+
+        __winapi(9, 16); // ~60 FPS
+        return true;
+    }
+}
+
+class Ui {
+    static UiApp window(String title, int width, int height) {
+        return new UiApp(title, width, height);
+    }
+}
